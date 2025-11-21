@@ -268,13 +268,19 @@ def main():
     print("4. Start web server on http://localhost:8080")
     print("5. Display data and provide download link")
     
+    # Get the port from the environment variable set by Railway, default to 8080
+    port = int(os.environ.get('PORT', 8080))
+    # Bind to '0.0.0.0' to accept connections from outside the container
+    host = '0.0.0.0'
+
     # Run the application
     app = asyncio.run(init_app())
-    
-    print("\nWeb server started! Visit http://localhost:8080")
+
+    print(f"\nWeb server started! Visit http://{host}:{port}")
     print("Press Ctrl+C to stop the server")
-    
-    web.run_app(app, host='localhost', port=8080)
+
+    # Use the dynamic host and port
+    web.run_app(app, host=host, port=port)
 
 if __name__ == "__main__":
     main()
