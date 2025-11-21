@@ -3,3 +3,4 @@ numpy>=1.21.0
 requests>=2.25.0
 matplotlib>=3.5.0
 flask>=2.0.0
+python-binance>=1.0.19
