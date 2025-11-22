@@ -1,6 +1,6 @@
-pandas 
-numpy 
-scikit-learn 
-flask 
-matplotlib 
-requests
+pandas>=1.3.0
+numpy>=1.21.0
+scikit-learn>=1.0.0
+matplotlib>=3.5.0
+flask>=2.0.0
+python-binance>=1.0.15
