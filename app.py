@@ -285,18 +285,20 @@ def create_plot(df, y_train, predictions, train_indices, history_loss, history_v
         all_y_actual.extend(sorted_y_test)
         all_y_predicted.extend(sorted_test_predictions)
     
-    # Plot 1: Combined actual vs predicted prices
+    # Plot 1: Prediction vs Target with BTC price for debugging
     plt.subplot(3, 1, 1)
-    plt.plot(all_dates, all_y_actual, label='Actual Price', color='blue')
-    plt.plot(all_dates, all_y_predicted, label='Predicted Price', color='green', alpha=0.7)
-    # Add the actual target (7-day rolling average of close price)
-    actual_target = df['close'].rolling(window=7).mean().dropna()
-    target_dates = df.index[df['close'].rolling(window=7).mean().notna()]
-    # Align target dates with the combined data dates
-    common_dates = target_dates.intersection(pd.DatetimeIndex(all_dates))
-    common_target = actual_target.loc[common_dates]
-    plt.plot(common_dates, common_target, label='Target (7-day MA)', color='red', linestyle='--', alpha=0.8)
-    plt.title('BTC Price Prediction vs Target (Training and Test Sets)')
+    # Plot prediction line
+    plt.plot(all_dates, all_y_predicted, label='Predicted Price', color='green', alpha=0.8)
+    # Plot target line (7-day SMA)
+    plt.plot(all_dates, all_y_actual, label='Target (7-day SMA)', color='red', alpha=0.8)
+    # Add BTC actual price for debugging
+    btc_price_dates = df.index
+    btc_prices = df['close']
+    # Align BTC price dates with the combined data dates
+    common_btc_dates = btc_price_dates.intersection(pd.DatetimeIndex(all_dates))
+    common_btc_prices = btc_prices.loc[common_btc_dates]
+    plt.plot(common_btc_dates, common_btc_prices, label='BTC Price (Debug)', color='blue', linestyle=':', alpha=0.6)
+    plt.title('Prediction vs Target with BTC Price (Training and Test Sets)')
     plt.legend()
     plt.xticks(rotation=45)
 
