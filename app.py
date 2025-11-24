@@ -381,7 +381,7 @@ def run_training_task():
         
         early_stopping = EarlyStopping(
             monitor='val_loss',
-            patience=20,
+            patience=50,
             restore_best_weights=True,
             verbose=1
         )
