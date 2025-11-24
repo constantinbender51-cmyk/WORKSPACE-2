@@ -204,41 +204,48 @@ def prepare_data(df):
     df['stoch_rsi'] = 100 * (rsi - rsi_min) / (rsi_max - rsi_min)
     df['day_of_week'] = df.index.dayofweek + 1
     
-    df_clean = df.dropna()
+    # Don't drop NaN values yet - we'll handle alignment properly
     
     features = []
     targets = []
-    for i in range(len(df_clean)):
-        if i >= 40:
+    # Start from index 40 to ensure we have enough lookback data
+    # and account for the 7-day SMA window
+    for i in range(40, len(df)):
+        # Check if we have enough data for the 7-day SMA target
+        if i >= 6:  # Need at least 7 days for SMA
             feature = []
             for lookback in range(1, 13):
                 if i - lookback >= 0:
                     # Use actual values for each feature
-                    feature.append(df_clean['sma_3_close'].iloc[i - lookback])
-                    feature.append(df_clean['sma_9_close'].iloc[i - lookback])
-                    feature.append(df_clean['ema_3_volume'].iloc[i - lookback])
-                    feature.append(df_clean['macd_line'].iloc[i - lookback])
-                    feature.append(df_clean['signal_line'].iloc[i - lookback])
-                    feature.append(df_clean['stoch_rsi'].iloc[i - lookback])
-                    feature.append(df_clean['day_of_week'].iloc[i - lookback])
+                    feature.append(df['sma_3_close'].iloc[i - lookback])
+                    feature.append(df['sma_9_close'].iloc[i - lookback])
+                    feature.append(df['ema_3_volume'].iloc[i - lookback])
+                    feature.append(df['macd_line'].iloc[i - lookback])
+                    feature.append(df['signal_line'].iloc[i - lookback])
+                    feature.append(df['stoch_rsi'].iloc[i - lookback])
+                    feature.append(df['day_of_week'].iloc[i - lookback])
                     
                     # On-chain metrics actual values
                     for col in ['Net_Transaction_Count', 'Transaction_Volume_USD', 'Active_Addresses']:
-                        if col in df_clean.columns:
-                            feature.append(df_clean[col].iloc[i - lookback])
+                        if col in df.columns:
+                            feature.append(df[col].iloc[i - lookback])
                         else:
                             feature.append(0)
                 else:
                     # For days before the start of the sequence, use zeros
                     feature.extend([0] * 10)
             features.append(feature)
-            targets.append(df_clean['close'].rolling(window=7).mean().iloc[i])
+            # Target is the 7-day SMA ending at position i (no future data)
+            targets.append(df['close'].rolling(window=7).mean().iloc[i])
     
     features = np.array(features)
-    valid_indices = ~np.isnan(features).any(axis=1)
-    features = features[valid_indices]
     targets = np.array(targets)
-    targets = targets[valid_indices[:len(targets)]]
+    
+    # Remove any samples where features or targets contain NaN values
+    valid_indices = ~np.isnan(features).any(axis=1) & ~np.isnan(targets)
+    features = features[valid_indices]
+    targets = targets[valid_indices]
+    
     min_len = min(len(features), len(targets))
     
     # Scale Features
