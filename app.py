@@ -241,10 +241,6 @@ def prepare_data(df):
     targets = targets[valid_indices[:len(targets)]]
     min_len = min(len(features), len(targets))
     
-    # Check and ensure features have the correct shape for reshaping
-    if features.shape[1] != 120:  # 12 lookbacks * 10 features per lookback
-        raise ValueError(f"Features shape {features.shape} does not match expected (n_samples, 120). Check feature construction.")
-    
     # Scale Features
     scaler_features = StandardScaler()
     features_scaled = scaler_features.fit_transform(features[:min_len])
@@ -348,12 +344,7 @@ def run_training_task():
         y_test = targets_scaled[split_idx:]
         train_indices = list(range(40, 40 + split_idx))
         
-        # Reshape features for LSTM input: (samples, time_steps=12, features_per_step=10)
-        if X_train.shape[1] != 120:
-            raise ValueError(f"X_train shape {X_train.shape} cannot be reshaped to (n, 12, 10).")
         X_train_reshaped = X_train.reshape(X_train.shape[0], 12, 10)
-        if X_test.shape[1] != 120:
-            raise ValueError(f"X_test shape {X_test.shape} cannot be reshaped to (n, 12, 10).")
         X_test_reshaped = X_test.reshape(X_test.shape[0], 12, 10)
         
         # INCREASED EPOCHS AND ADDED REGULARIZATION
