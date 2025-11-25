@@ -161,6 +161,9 @@ def calculate_strategy(df):
     df['capital'] = capital_series
     df['capital'] = df['capital'].fillna(initial_capital)
     
+    # Calculate strategy returns and Sharpe ratio
+    df['strategy_return'] = df['capital'].pct_change()
+    
     return df
 
 def create_plot(df):
@@ -234,12 +237,22 @@ def index():
         total_days = len(df)
         trading_days = len(df[df['position'].notna()])
         
+        # Calculate Sharpe ratio (annualized)
+        strategy_returns = df['strategy_return'].dropna()
+        if len(strategy_returns) > 0:
+            # Assuming 365 trading days per year
+            annual_factor = np.sqrt(365)
+            sharpe_ratio = (strategy_returns.mean() / strategy_returns.std()) * annual_factor if strategy_returns.std() > 0 else 0
+        else:
+            sharpe_ratio = 0
+        
         return render_template('index.html', 
                              plot_url=plot_url,
                              final_capital=final_capital,
                              total_return=total_return,
                              total_days=total_days,
-                             trading_days=trading_days)
+                             trading_days=trading_days,
+                             sharpe_ratio=sharpe_ratio)
     
     except Exception as e:
         logger.error(f"Error in main route: {e}")
@@ -258,10 +271,20 @@ def api_strategy_data():
         final_capital = df['capital'].iloc[-1]
         total_return = (final_capital - 1000) / 1000 * 100
         
+        # Calculate Sharpe ratio (annualized)
+        strategy_returns = df['strategy_return'].dropna()
+        if len(strategy_returns) > 0:
+            # Assuming 365 trading days per year
+            annual_factor = np.sqrt(365)
+            sharpe_ratio = (strategy_returns.mean() / strategy_returns.std()) * annual_factor if strategy_returns.std() > 0 else 0
+        else:
+            sharpe_ratio = 0
+        
         return jsonify({
             'status': 'success',
             'final_capital': final_capital,
             'total_return_percent': total_return,
+            'sharpe_ratio': sharpe_ratio,
             'total_days': len(df),
             'data_points': len(df[df['position'].notna()])
         })
