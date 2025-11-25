@@ -92,33 +92,59 @@ def fetch_btc_data():
         raise Exception("Failed to fetch BTC data")
 
 def calculate_strategy(df):
-    """Calculate trading strategy - long if price above SMA 365, otherwise short"""
-    logger.info("Calculating SMA 365 strategy...")
+    """Calculate trading strategy - long if price above SMA 365, otherwise short with 3% stop-loss"""
+    logger.info("Calculating SMA 365 strategy with 3% stop-loss...")
     
     # Calculate 365-day SMA
     df['sma_365'] = df['close'].rolling(window=365).mean()
     
-    # Strategy: Long if price above SMA 365, otherwise short
-    df['position'] = np.where(df['close'] > df['sma_365'], 1, -1)
+    # Initialize position tracking
+    df['position'] = 0
+    df['entry_price'] = 0.0
+    df['stop_loss_triggered'] = False
     
     # Calculate daily returns
     df['daily_return'] = df['close'].pct_change()
     
-    # Calculate strategy returns (position * daily return)
-    df['strategy_return'] = df['position'].shift(1) * df['daily_return']
-    
-    # Calculate cumulative capital development - update daily based on strategy returns
     initial_capital = 1000
     capital_series = [initial_capital]
+    current_position = 0
+    entry_price = 0.0
     
     for i in range(1, len(df)):
-        # Update capital daily based on strategy return
-        capital = capital_series[-1] * (1 + df['strategy_return'].iloc[i])
+        # Determine target position based on SMA strategy
+        target_position = 1 if df['close'].iloc[i] > df['sma_365'].iloc[i] else -1
+        
+        # Check if we need to change position
+        if current_position != target_position:
+            current_position = target_position
+            entry_price = df['close'].iloc[i]
+            df.loc[df.index[i], 'entry_price'] = entry_price
+            df.loc[df.index[i], 'stop_loss_triggered'] = False
+        else:
+            # Check stop-loss condition if we have an open position
+            if current_position != 0 and entry_price > 0:
+                stop_loss_level_long = entry_price * 0.97  # 3% below entry for long
+                stop_loss_level_short = entry_price * 1.03  # 3% above entry for short
+                
+                # Check if stop-loss is triggered
+                if (current_position == 1 and df['low'].iloc[i] <= stop_loss_level_long) or \
+                   (current_position == -1 and df['high'].iloc[i] >= stop_loss_level_short):
+                    current_position = 0
+                    df.loc[df.index[i], 'stop_loss_triggered'] = True
+                    entry_price = 0.0
+        
+        # Set position for this day
+        df.loc[df.index[i], 'position'] = current_position
+        
+        # Calculate strategy return
+        strategy_return = current_position * df['daily_return'].iloc[i]
+        
+        # Update capital
+        capital = capital_series[-1] * (1 + strategy_return)
         capital_series.append(capital)
     
     df['capital'] = capital_series
-    
-    # Fill NaN values
     df['capital'] = df['capital'].fillna(initial_capital)
     
     return df
