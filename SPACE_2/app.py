@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 def fetch_btc_data():
-    """Fetch BTC price data from 2024 to 2025"""
-    logger.info("Fetching BTC price data from 2024 to 2025...")
+    """Fetch BTC price data from 2018 to 2025"""
+    logger.info("Fetching BTC price data from 2018 to 2025...")
     
     if os.path.exists('btc_data.csv'):
         logger.info("Loading existing data file...")
@@ -33,7 +33,7 @@ def fetch_btc_data():
     base_url = 'https://api.binance.com/api/v3/klines'
     symbol = 'BTCUSDT'
     interval = '1d'
-    start_date = datetime(2024, 1, 1)
+    start_date = datetime(2018, 1, 1)
     end_date = datetime(2025, 12, 31)
     
     all_data = []
@@ -92,14 +92,14 @@ def fetch_btc_data():
         raise Exception("Failed to fetch BTC data")
 
 def calculate_strategy(df):
-    """Calculate trading strategy - always go long"""
-    logger.info("Calculating always-long strategy...")
+    """Calculate trading strategy - long if price above SMA 365, otherwise short"""
+    logger.info("Calculating SMA 365 strategy...")
     
     # Calculate 365-day SMA
     df['sma_365'] = df['close'].rolling(window=365).mean()
     
-    # Strategy: Always go long (position = 1)
-    df['position'] = 1
+    # Strategy: Long if price above SMA 365, otherwise short
+    df['position'] = np.where(df['close'] > df['sma_365'], 1, -1)
     
     # Calculate daily returns
     df['daily_return'] = df['close'].pct_change()
@@ -133,9 +133,12 @@ def create_plot(df):
     
     # Plot 2: Trading Positions
     plt.subplot(3, 1, 2)
-    # Since strategy is always long, plot entire period as long
-    plt.plot(df.index, df['close'], label='Long Position (Always)', color='green', linewidth=2)
-    plt.title('Trading Positions (Always Long)')
+    # Plot long positions (green) and short positions (red)
+    long_mask = df['position'] == 1
+    short_mask = df['position'] == -1
+    plt.plot(df.index[long_mask], df['close'][long_mask], label='Long Position', color='green', linewidth=2)
+    plt.plot(df.index[short_mask], df['close'][short_mask], label='Short Position', color='red', linewidth=2)
+    plt.title('Trading Positions (Long if Price > SMA 365, Otherwise Short)')
     plt.ylabel('Price (USD)')
     plt.legend()
     plt.grid(True, alpha=0.3)
@@ -154,7 +157,7 @@ def create_plot(df):
     final_capital = df['capital'].iloc[-1]
     total_return = (final_capital - 1000) / 1000 * 100
     
-    plt.figtext(0.02, 0.02, f'Final Capital: ${final_capital:,.2f} | Total Return: {total_return:+.2f}% | Strategy: Always Long', 
+    plt.figtext(0.02, 0.02, f'Final Capital: ${final_capital:,.2f} | Total Return: {total_return:+.2f}% | Strategy: Long if Price > SMA 365, Otherwise Short', 
                 fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
     
     plt.tight_layout()
