@@ -235,8 +235,8 @@ def prepare_data(df):
                     # For days before the start of the sequence, use zeros
                     feature.extend([0] * 10)
             features.append(feature)
-            # Target is the 7-day SMA ending at position i (no future data)
-            targets.append(df['close'].rolling(window=7).mean().iloc[i])
+            # Target is the 3-day SMA ending at position i (no future data)
+            targets.append(df['close'].rolling(window=3).mean().iloc[i])
     
     features = np.array(features)
     targets = np.array(targets)
@@ -296,8 +296,8 @@ def create_plot(df, y_train, predictions, train_indices, history_loss, history_v
     plt.subplot(3, 1, 1)
     # Plot prediction line
     plt.plot(all_dates, all_y_predicted, label='Predicted Price', color='green', alpha=0.8)
-    # Plot target line (7-day SMA)
-    plt.plot(all_dates, all_y_actual, label='Target (7-day SMA)', color='red', alpha=0.8)
+    # Plot target line (3-day SMA)
+    plt.plot(all_dates, all_y_actual, label='Target (3-day SMA)', color='red', alpha=0.8)
     # Add BTC actual price for debugging
     btc_price_dates = df.index
     btc_prices = df['close']
