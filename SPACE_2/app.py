@@ -140,6 +140,7 @@ def calculate_strategy(df):
                     current_position = 0
                     df.loc[df.index[i], 'stop_loss_triggered'] = True
                     entry_price = 0.0
+                    df.loc[df.index[i], 'entry_price'] = entry_price
         
         # Set position for this day
         df.loc[df.index[i], 'position'] = current_position
