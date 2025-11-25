@@ -135,9 +135,9 @@ def calculate_strategy(df):
         if current_position == 1:
             # Long position: capital * current_price / prev_price
             capital = prev_capital * current_price / prev_price
-            # Stop-loss for long: if low <= 0.99 * prev_price, capital remains unchanged
+            # Stop-loss for long: if low <= 0.99 * prev_price, capital * 0.99
             if df['low'].iloc[i] <= 0.99 * prev_price:
-                capital = prev_capital
+                capital = prev_capital * 0.99
                 df.loc[df.index[i], 'stop_loss_triggered'] = True
         elif current_position == -1:
             # Short position: capital * (2 - current_price / prev_price)
