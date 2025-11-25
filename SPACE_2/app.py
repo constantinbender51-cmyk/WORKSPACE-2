@@ -168,12 +168,28 @@ def create_plot(df, best_atr_multiplier):
     """Create visualization of strategy results"""
     logger.info("Creating strategy visualization...")
     
+    # Skip the first 365 data points for plotting to align with targets/predictions and for warmup
+    plot_df = df.iloc[365:].copy() # Use .copy() to avoid SettingWithCopyWarning
+
     plt.figure(figsize=(12, 10))
     
     # Plot 1: BTC Price and 365-day SMA
     plt.subplot(3, 1, 1)
-    plt.plot(df.index, df['close'], label='BTC Price', color='blue', linewidth=1)
-    plt.plot(df.index, df['sma_365'], label='365-day SMA', color='orange', linewidth=1)
+    plt.plot(plot_df.index, plot_df['close'], label='BTC Price', color='blue', linewidth=1)
+    plt.plot(plot_df.index, plot_df['sma_365'], label='365-day SMA', color='orange', linewidth=1)
+    plt.title('BTC Price and 365-day Simple Moving Average')
+    plt.ylabel('Price (USD)')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    
+    plt.figure(figsize=(12, 10))
+    
+    # Plot 1: BTC Price and 365-day SMA
+    plt.subplot(3, 1, 1)
+    # Skip the first 365 data points for plotting
+    plot_df = df.iloc[365:]
+    plt.plot(plot_df.index, plot_df['close'], label='BTC Price', color='blue', linewidth=1)
+    plt.plot(plot_df.index, plot_df['sma_365'], label='365-day SMA', color='orange', linewidth=1)
     plt.title('BTC Price and 365-day Simple Moving Average')
     plt.ylabel('Price (USD)')
     plt.legend()
@@ -182,10 +198,12 @@ def create_plot(df, best_atr_multiplier):
     # Plot 2: Trading Positions
     plt.subplot(3, 1, 2)
     # Plot long positions (green) and short positions (red)
-    long_mask = df['position'] == 1
-    short_mask = df['position'] == -1
-    plt.plot(df.index[long_mask], df['close'][long_mask], label='Long Position', color='green', linewidth=2)
-    plt.plot(df.index[short_mask], df['close'][short_mask], label='Short Position', color='red', linewidth=2)
+    # Skip the first 365 data points for plotting
+    plot_df = df.iloc[365:]
+    long_mask = plot_df['position'] == 1
+    short_mask = plot_df['position'] == -1
+    plt.plot(plot_df.index[long_mask], plot_df['close'][long_mask], label='Long Position', color='green', linewidth=2)
+    plt.plot(plot_df.index[short_mask], plot_df['close'][short_mask], label='Short Position', color='red', linewidth=2)
     plt.title('Trading Positions (Long if Price > SMA 365, Otherwise Short)')
     plt.ylabel('Price (USD)')
     plt.legend()
@@ -193,7 +211,9 @@ def create_plot(df, best_atr_multiplier):
     
     # Plot 3: Capital Development
     plt.subplot(3, 1, 3)
-    plt.plot(df.index, df['capital'], label='Strategy Capital', color='purple', linewidth=2)
+    # Skip the first 365 data points for plotting
+    plot_df = df.iloc[365:]
+    plt.plot(plot_df.index, plot_df['capital'], label='Strategy Capital', color='purple', linewidth=2)
     plt.axhline(y=1000, color='gray', linestyle='--', label='Initial Capital ($1000)')
     plt.title('Capital Development - SMA 365 Strategy')
     plt.ylabel('Capital (USD)')
@@ -202,11 +222,12 @@ def create_plot(df, best_atr_multiplier):
     plt.grid(True, alpha=0.3)
     
     # Add performance metrics to the plot
-    final_capital = df['capital'].iloc[-1]
+    final_capital = plot_df['capital'].iloc[-1]
     total_return = (final_capital - 1000) / 1000 * 100
     
     # Calculate Sharpe ratio for the best ATR multiplier
-    strategy_returns = df['strategy_return'].dropna()
+    # Use strategy_returns from the sliced plot_df
+    strategy_returns = plot_df['strategy_return'].dropna()
     if len(strategy_returns) > 0:
         annual_factor = np.sqrt(365)
         sharpe_ratio = (strategy_returns.mean() / strategy_returns.std()) * annual_factor if strategy_returns.std() > 0 else 0
@@ -273,12 +294,16 @@ def api_strategy_data():
         df = fetch_btc_data()
         df, best_atr_multiplier = calculate_strategy(df)
         
+        # Use data from the sliced DataFrame for metrics related to plotting
+        plot_df = df.iloc[365:].copy()
+        
         # Return basic strategy performance
-        final_capital = df['capital'].iloc[-1]
+        final_capital = plot_df['capital'].iloc[-1]
         total_return = (final_capital - 1000) / 1000 * 100
         
         # Calculate Sharpe ratio (annualized)
-        strategy_returns = df['strategy_return'].dropna()
+        # Use strategy_returns from the sliced plot_df
+        strategy_returns = plot_df['strategy_return'].dropna()
         if len(strategy_returns) > 0:
             # Assuming 365 trading days per year
             annual_factor = np.sqrt(365)
@@ -291,8 +316,8 @@ def api_strategy_data():
             'final_capital': final_capital,
             'total_return_percent': total_return,
             'sharpe_ratio': sharpe_ratio,
-            'total_days': len(df),
-            'data_points': len(df[df['position'].notna()])
+            'total_days': len(plot_df), # Number of days shown in the plot
+            'data_points': len(plot_df[plot_df['position'].notna()])
         })
     
     except Exception as e:
