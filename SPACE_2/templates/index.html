@@ -117,7 +117,7 @@
     <div class="container">
         <h1>📈 BTC SMA 365 Trading Strategy</h1>
         <div class="subtitle">
-            Strategy: Go LONG when BTC Price > 365-day SMA • Go SHORT when BTC Price < 365-day SMA
+            Strategy: Always LONG (Buy and Hold)
         </div>
 
         {% if error %}
@@ -128,10 +128,10 @@
 
         <div class="strategy-description">
             <h3>📊 Strategy Overview</h3>
-            <p>This strategy uses a simple moving average (SMA) crossover system:</p>
+            <p>This strategy implements a simple buy-and-hold approach:</p>
             <ul>
-                <li><strong>Long Position:</strong> When current BTC price is above the 365-day SMA</li>
-                <li><strong>Short Position:</strong> When current BTC price is below the 365-day SMA</li>
+                <li><strong>Position:</strong> Always Long (Buy and Hold)</li>
+                <li><strong>No Shorting:</strong> Strategy only takes long positions</li>
                 <li><strong>Initial Capital:</strong> $1,000</li>
                 <li><strong>Data Period:</strong> 2024-01-01 to 2025-12-31</li>
             </ul>
@@ -177,7 +177,7 @@
         {% endif %}
 
         <div class="footer">
-            <p>Data Source: Binance API | Strategy: SMA 365 Crossover | Initial Capital: $1,000</p>
+            <p>Data Source: Binance API | Strategy: Always Long (Buy & Hold) | Initial Capital: $1,000</p>
             <p><small>Note: This is for educational purposes only. Past performance does not guarantee future results.</small></p>
         </div>
     </div>
