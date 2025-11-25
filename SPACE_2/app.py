@@ -129,6 +129,9 @@ def calculate_strategy(df):
             df.loc[df.index[i], 'entry_price'] = entry_price
             df.loc[df.index[i], 'stop_loss_triggered'] = False
         else:
+            # Update entry price to previous close every day
+            entry_price = current_entry_price
+            df.loc[df.index[i], 'entry_price'] = entry_price
             # Check stop-loss condition if we have an open position
             if current_position != 0 and entry_price > 0:
                 # Stop-loss set to 1e-69 offset: trigger if price moves against position by this amount
@@ -143,7 +146,16 @@ def calculate_strategy(df):
         df.loc[df.index[i], 'position'] = current_position
         
         # Calculate strategy return with 1x leverage
-        strategy_return = current_position * df['daily_return'].iloc[i] * 1
+        if df.loc[df.index[i], 'stop_loss_triggered']:
+            # Use stop-loss return if triggered
+            if current_position == 1:
+                strategy_return = (df['close'].iloc[i] / entry_price - 1) * 1
+            elif current_position == -1:
+                strategy_return = (entry_price / df['close'].iloc[i] - 1) * 1
+            else:
+                strategy_return = 0.0
+        else:
+            strategy_return = current_position * df['daily_return'].iloc[i] * 1
         
         # Update capital with strategy return and apply 0.04% daily fee
         capital = capital_series[-1] * (1 + strategy_return) * (1 - 0.0004)
