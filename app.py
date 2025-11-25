@@ -317,8 +317,10 @@ def create_plot(df, y_train, predictions, train_indices, history_loss, history_v
         btc_price_i = df.loc[all_dates[i], 'close']
         btc_price_prev = df.loc[all_dates[i-1], 'close']
         ret = (btc_price_i - btc_price_prev) / btc_price_prev
-        # Strategy: long if prediction is above yesterday's close, otherwise short
-        pos = 1 if all_y_predicted[i] > btc_price_prev else -1
+        # Strategy: long if derivative of prediction is positive, otherwise short
+        # Derivative of prediction at day 'i' is prediction[i] - prediction[i-1]
+        derivative_of_prediction = all_y_predicted[i] - all_y_predicted[i-1]
+        pos = 1 if derivative_of_prediction > 0 else -1
         capital.append(capital[-1] * (1 + (ret * pos * 1)))
         positions.append(pos)
     
@@ -329,7 +331,7 @@ def create_plot(df, y_train, predictions, train_indices, history_loss, history_v
         color = 'red' if positions[i] == -1 else 'green' if positions[i] == 1 else 'none'
         if color != 'none':
             plt.scatter(all_dates[i+1], capital[i+1], color=color, s=10)
-    plt.title('Strategy Capital (Long/Short based on Predicted vs Yesterday Price)')
+    plt.title('Strategy Capital (Long/Short based on Derivative of Prediction)')
     plt.xticks(rotation=45)
 
     # Plot 3: Loss curves
