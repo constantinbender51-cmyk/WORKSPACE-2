@@ -313,7 +313,10 @@ def create_plot(df, y_train, predictions, train_indices, history_loss, history_v
     capital = [1000]
     positions = []
     for i in range(1, len(all_y_actual)):
-        ret = (all_y_actual[i] - all_y_actual[i-1]) / all_y_actual[i-1]
+        # Calculate return as percentage change of actual BTC price
+        btc_price_i = df.loc[all_dates[i], 'close']
+        btc_price_prev = df.loc[all_dates[i-1], 'close']
+        ret = (btc_price_i - btc_price_prev) / btc_price_prev
         # Use derivative of prediction: long if prediction is increasing, short if decreasing
         pred_derivative = all_y_predicted[i] - all_y_predicted[i-1] if i > 0 else 0
         pos = 1 if pred_derivative > 0 else -1 
@@ -322,9 +325,9 @@ def create_plot(df, y_train, predictions, train_indices, history_loss, history_v
     
     plt.subplot(3, 1, 2)
     plt.plot(all_dates, capital, color='purple')
-    # Mark positions on each day: grey for short (pos=-1), yellow for long (pos=1)
+    # Mark positions on each day: red for short (pos=-1), green for long (pos=1)
     for i in range(len(positions)):
-        color = 'grey' if positions[i] == -1 else 'yellow' if positions[i] == 1 else 'none'
+        color = 'red' if positions[i] == -1 else 'green' if positions[i] == 1 else 'none'
         if color != 'none':
             plt.scatter(all_dates[i+1], capital[i+1], color=color, s=10)
     plt.title('Strategy Capital (Long/Short based on Predicted vs Yesterday Price)')
