@@ -143,8 +143,8 @@ def calculate_strategy(df):
         # Calculate strategy return
         strategy_return = current_position * df['daily_return'].iloc[i]
         
-        # Update capital
-        capital = capital_series[-1] * (1 + strategy_return)
+        # Update capital with strategy return and apply 0.04% daily fee
+        capital = capital_series[-1] * (1 + strategy_return) * (1 - 0.0004)
         capital_series.append(capital)
     
     df['capital'] = capital_series
