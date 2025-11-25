@@ -92,11 +92,15 @@ def fetch_btc_data():
         raise Exception("Failed to fetch BTC data")
 
 def calculate_strategy(df):
-    """Calculate trading strategy - long if price above SMA 365, otherwise short with 3% stop-loss"""
-    logger.info("Calculating SMA 365 strategy with 3% stop-loss...")
+    """Calculate trading strategy - long if price above SMA 365, otherwise short with 0.5 ATR stop-loss"""
+    logger.info("Calculating SMA 365 strategy with 0.5 ATR stop-loss...")
     
     # Calculate 365-day SMA
     df['sma_365'] = df['close'].rolling(window=365).mean()
+    
+    # Calculate Average True Range (ATR) with 14-day window
+    df['tr'] = np.maximum(df['high'] - df['low'], np.maximum(abs(df['high'] - df['close'].shift(1)), abs(df['low'] - df['close'].shift(1))))
+    df['atr'] = df['tr'].rolling(window=14).mean()
     
     # Initialize position tracking
     df['position'] = 0
@@ -127,8 +131,8 @@ def calculate_strategy(df):
         else:
             # Check stop-loss condition if we have an open position
             if current_position != 0 and entry_price > 0:
-                stop_loss_level_long = entry_price * 0.97  # 3% below entry for long
-                stop_loss_level_short = entry_price * 1.03  # 3% above entry for short
+                stop_loss_level_long = entry_price - 0.5 * df['atr'].iloc[i]  # 0.5 ATR below entry for long
+                stop_loss_level_short = entry_price + 0.5 * df['atr'].iloc[i]  # 0.5 ATR above entry for short
                 
                 # Check if stop-loss is triggered
                 if (current_position == 1 and df['low'].iloc[i] <= stop_loss_level_long) or \
@@ -140,8 +144,8 @@ def calculate_strategy(df):
         # Set position for this day
         df.loc[df.index[i], 'position'] = current_position
         
-        # Calculate strategy return with 2x leverage
-        strategy_return = current_position * df['daily_return'].iloc[i] * 2
+        # Calculate strategy return with 1x leverage
+        strategy_return = current_position * df['daily_return'].iloc[i] * 1
         
         # Update capital with strategy return and apply 0.04% daily fee
         capital = capital_series[-1] * (1 + strategy_return) * (1 - 0.0004)
