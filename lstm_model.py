@@ -200,11 +200,11 @@ def train_model():
 
     # Build the LSTM model
     model = Sequential([
-        LSTM(200, return_sequences=True, input_shape=(X_train_scaled.shape[1], 1)),
+        LSTM(100, return_sequences=True, input_shape=(X_train_scaled.shape[1], 1)),
         Dropout(0.5),
-        LSTM(200, return_sequences=False),
+        LSTM(100, return_sequences=False),
         Dropout(0.5),
-        Dense(100, activation='relu', kernel_regularizer=l1_l2(l1=1e-4, l2=1e-4)),
+        Dense(50, activation='relu', kernel_regularizer=l1_l2(l1=1e-4, l2=1e-4)),
         Dense(1, activation='tanh', kernel_regularizer=l1_l2(l1=1e-4, l2=1e-4))  # Tanh activation to constrain outputs to [-1, 1]
     ])
 
