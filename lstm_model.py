@@ -17,7 +17,7 @@ import json
 training_progress = {
     'status': 'not_started',  # 'not_started', 'running', 'completed'
     'current_epoch': 0,
-    'total_epochs': 20,
+    'total_epochs': 40,
     'train_loss': [],
     'val_loss': [],
     'train_predictions': [],
@@ -200,11 +200,11 @@ def train_model():
 
     # Build the LSTM model
     model = Sequential([
-        LSTM(100, return_sequences=True, input_shape=(X_train_scaled.shape[1], 1)),
+        LSTM(200, return_sequences=True, input_shape=(X_train_scaled.shape[1], 1)),
         Dropout(0.5),
-        LSTM(100, return_sequences=False),
+        LSTM(200, return_sequences=False),
         Dropout(0.5),
-        Dense(50, activation='relu', kernel_regularizer=l1_l2(l1=1e-4, l2=1e-4)),
+        Dense(100, activation='relu', kernel_regularizer=l1_l2(l1=1e-4, l2=1e-4)),
         Dense(1, activation='tanh', kernel_regularizer=l1_l2(l1=1e-4, l2=1e-4))  # Tanh activation to constrain outputs to [-1, 1]
     ])
 
@@ -229,7 +229,7 @@ def train_model():
             time.sleep(0.1)  # Small delay to allow progress updates
 
     # Train the model
-    history = model.fit(X_train_scaled, y_train, batch_size=256, epochs=20, validation_data=(X_test_scaled, y_test), verbose=1, callbacks=[ProgressCallback()])
+    history = model.fit(X_train_scaled, y_train, batch_size=256, epochs=40, validation_data=(X_test_scaled, y_test), verbose=1, callbacks=[ProgressCallback()])
 
     # Predict on the test set
     y_pred = model.predict(X_test_scaled)
