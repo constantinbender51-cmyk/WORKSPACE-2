@@ -17,7 +17,7 @@ import json
 training_progress = {
     'status': 'not_started',  # 'not_started', 'running', 'completed'
     'current_epoch': 0,
-    'total_epochs': 800,
+    'total_epochs': 400,
     'train_loss': [],
     'val_loss': [],
     'train_predictions': [],
@@ -244,9 +244,9 @@ def train_model():
 
     # Build the LSTM model with reduced complexity and no strong regularization
     model = Sequential([
-        LSTM(64, return_sequences=True, input_shape=(X_train_scaled.shape[1], 3)),
+        LSTM(128, return_sequences=True, input_shape=(X_train_scaled.shape[1], 3)),
         Dropout(0.3),
-        LSTM(32, return_sequences=False),
+        LSTM(64, return_sequences=False),
         Dropout(0.3),
         Dense(16, activation='relu'),
         Dense(1, activation='linear')  # Linear activation for regression
@@ -274,7 +274,7 @@ def train_model():
             time.sleep(0.1)  # Small delay to allow progress updates
 
     # Train the model
-    history = model.fit(X_train_scaled, y_train, batch_size=128, epochs=800, validation_data=(X_test_scaled, y_test), verbose=1, callbacks=[ProgressCallback()])
+    history = model.fit(X_train_scaled, y_train, batch_size=128, epochs=400, validation_data=(X_test_scaled, y_test), verbose=1, callbacks=[ProgressCallback()])
 
     # Predict on the test set
     y_pred = model.predict(X_test_scaled)
