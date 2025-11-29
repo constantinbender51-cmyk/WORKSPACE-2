@@ -242,13 +242,13 @@ def train_model():
         X_test_scaled = np.nan_to_num(X_test_scaled)
         y_test = np.nan_to_num(y_test)
 
-    # Build the LSTM model with reduced complexity and no strong regularization
+    # Build the LSTM model with reduced complexity and L1/L2 regularization
     model = Sequential([
-        LSTM(128, return_sequences=True, input_shape=(X_train_scaled.shape[1], 3)),
+        LSTM(128, return_sequences=True, input_shape=(X_train_scaled.shape[1], 3), kernel_regularizer=l1_l2()),
         Dropout(0.3),
-        LSTM(64, return_sequences=False),
+        LSTM(64, return_sequences=False, kernel_regularizer=l1_l2()),
         Dropout(0.3),
-        Dense(16, activation='relu'),
+        Dense(16, activation='relu', kernel_regularizer=l1_l2()),
         Dense(1, activation='linear')  # Linear activation for regression
     ])
 
