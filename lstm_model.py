@@ -8,89 +8,236 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.regularizers import l1_l2
+from flask import Flask, render_template_string
+import threading
+import time
+import json
 
-# Download the CSV file from Google Drive
-url = 'https://drive.google.com/uc?id=1QsfDXX4ueu4_IkPKp36EnDHnpZUR19yG'
-output = 'data.csv'
-gdown.download(url, output, quiet=False)
+# Global variables for training progress and data
+training_progress = {
+    'status': 'not_started',  # 'not_started', 'running', 'completed'
+    'current_epoch': 0,
+    'total_epochs': 20,
+    'train_loss': [],
+    'val_loss': [],
+    'predictions': [],
+    'y_test': []
+}
 
-# Load the CSV data
-data = pd.read_csv(output)
+app = Flask(__name__)
 
-# Ensure the data has OHLCV columns and sma_position; adjust column names if necessary
-# Assuming columns: 'date', 'open', 'high', 'low', 'close', 'volume', 'sma_position'
-# If column names differ, update accordingly
-required_columns = ['open', 'high', 'low', 'close', 'volume', 'sma_position']
-for col in required_columns:
-    if col not in data.columns:
-        raise ValueError(f"Column '{col}' not found in the data. Please check the CSV structure.")
+# HTML template with auto-refresh and charts
+html_template = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Training Progress</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta http-equiv="refresh" content="60">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .progress { margin: 10px 0; }
+        .bar { width: 100%; background-color: #f0f0f0; border-radius: 5px; overflow: hidden; }
+        .fill { height: 20px; background-color: #4CAF50; width: 0%; transition: width 0.5s; }
+    </style>
+</head>
+<body>
+    <h1>LSTM Model Training Progress</h1>
+    <div class="progress">
+        <p>Status: <span id="status">{{ status }}</span></p>
+        <p>Epoch: <span id="current_epoch">{{ current_epoch }}</span> / <span id="total_epochs">{{ total_epochs }}</span></p>
+        <div class="bar">
+            <div class="fill" id="epoch_progress" style="width: {{ progress_percent }}%;"></div>
+        </div>
+    </div>
+    <div id="charts" style="display: {{ charts_display }};">
+        <h2>Loss Over Epochs</h2>
+        <canvas id="lossChart" width="400" height="200"></canvas>
+        <h2>Predictions vs Actual</h2>
+        <canvas id="predictionChart" width="400" height="200"></canvas>
+    </div>
+    <script>
+        function updateProgress() {
+            fetch('/progress')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('status').textContent = data.status;
+                    document.getElementById('current_epoch').textContent = data.current_epoch;
+                    document.getElementById('total_epochs').textContent = data.total_epochs;
+                    const progressPercent = (data.current_epoch / data.total_epochs) * 100;
+                    document.getElementById('epoch_progress').style.width = progressPercent + '%';
+                    
+                    if (data.status === 'completed') {
+                        document.getElementById('charts').style.display = 'block';
+                        updateCharts(data);
+                    } else {
+                        document.getElementById('charts').style.display = 'none';
+                    }
+                })
+                .catch(error => console.error('Error fetching progress:', error));
+        }
+        
+        function updateCharts(data) {
+            // Loss chart
+            const lossCtx = document.getElementById('lossChart').getContext('2d');
+            new Chart(lossCtx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: data.train_loss.length}, (_, i) => i + 1),
+                    datasets: [
+                        { label: 'Train Loss', data: data.train_loss, borderColor: 'blue', fill: false },
+                        { label: 'Validation Loss', data: data.val_loss, borderColor: 'red', fill: false }
+                    ]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: true } } }
+            });
+            
+            // Prediction chart
+            const predCtx = document.getElementById('predictionChart').getContext('2d');
+            new Chart(predCtx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: data.predictions.length}, (_, i) => i),
+                    datasets: [
+                        { label: 'Predictions', data: data.predictions, borderColor: 'green', fill: false },
+                        { label: 'Actual', data: data.y_test, borderColor: 'orange', fill: false }
+                    ]
+                },
+                options: { responsive: true }
+            });
+        }
+        
+        // Update every second
+        setInterval(updateProgress, 1000);
+        updateProgress();
+    </script>
+</body>
+</html>
+'''
 
-# Prepare features and target
-# Features: past 365 days of close prices for each day i (i-1 to i-365)
-# Target: sma_position for day i
-close_prices = data['close'].values
-sma_positions = data['sma_position'].values
+@app.route('/')
+def index():
+    progress_percent = (training_progress['current_epoch'] / training_progress['total_epochs']) * 100 if training_progress['total_epochs'] > 0 else 0
+    charts_display = 'block' if training_progress['status'] == 'completed' else 'none'
+    return render_template_string(html_template, 
+                                  status=training_progress['status'],
+                                  current_epoch=training_progress['current_epoch'],
+                                  total_epochs=training_progress['total_epochs'],
+                                  progress_percent=progress_percent,
+                                  charts_display=charts_display)
 
-# Create sequences of 365 days for features
-X = []
-y = []
-for i in range(365, len(close_prices)):
-    X.append(close_prices[i-365:i])
-    y.append(sma_positions[i])
+@app.route('/progress')
+def progress():
+    return json.dumps(training_progress)
 
-X = np.array(X)
-y = np.array(y)
+def train_model():
+    global training_progress
+    training_progress['status'] = 'running'
+    
+    # Download the CSV file from Google Drive
+    url = 'https://drive.google.com/uc?id=1QsfDXX4ueu4_IkPKp36EnDHnpZUR19yG'
+    output = 'data.csv'
+    gdown.download(url, output, quiet=False)
 
-# Reshape X for LSTM input: (samples, time steps, features)
-X = X.reshape((X.shape[0], X.shape[1], 1))
+    # Load the CSV data
+    data = pd.read_csv(output)
 
-# Split the data into training and testing sets (80% train, 20% test)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=False)
+    # Ensure the data has OHLCV columns and sma_position; adjust column names if necessary
+    # Assuming columns: 'date', 'open', 'high', 'low', 'close', 'volume', 'sma_position'
+    # If column names differ, update accordingly
+    required_columns = ['open', 'high', 'low', 'close', 'volume', 'sma_position']
+    for col in required_columns:
+        if col not in data.columns:
+            raise ValueError(f"Column '{col}' not found in the data. Please check the CSV structure.")
 
-# Standardize the features
-scaler = StandardScaler()
-X_train_reshaped = X_train.reshape(-1, X_train.shape[-1])
-X_test_reshaped = X_test.reshape(-1, X_test.shape[-1])
-scaler.fit(X_train_reshaped)
-X_train_scaled = scaler.transform(X_train_reshaped).reshape(X_train.shape)
-X_test_scaled = scaler.transform(X_test_reshaped).reshape(X_test.shape)
+    # Prepare features and target
+    # Features: past 365 days of close prices for each day i (i-1 to i-365)
+    # Target: sma_position for day i
+    close_prices = data['close'].values
+    sma_positions = data['sma_position'].values
 
-# Build the LSTM model
-model = Sequential([
-    LSTM(100, return_sequences=True, input_shape=(X_train_scaled.shape[1], 1)),
-    Dropout(0.5),
-    LSTM(100, return_sequences=False),
-    Dropout(0.5),
-    Dense(50, activation='relu', kernel_regularizer=l1_l2(l1=1e-4, l2=1e-4)),
-    Dense(1, activation='linear', kernel_regularizer=l1_l2(l1=1e-4, l2=1e-4))  # Linear activation for regression; adjust if sma_position is categorical
-])
+    # Create sequences of 365 days for features
+    X = []
+    y = []
+    for i in range(365, len(close_prices)):
+        X.append(close_prices[i-365:i])
+        y.append(sma_positions[i])
 
-# Compile the model
-model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae'])  # Adjust loss if needed for classification
+    X = np.array(X)
+    y = np.array(y)
 
-# Train the model
-history = model.fit(X_train_scaled, y_train, batch_size=256, epochs=20, validation_data=(X_test_scaled, y_test), verbose=1)
+    # Reshape X for LSTM input: (samples, time steps, features)
+    X = X.reshape((X.shape[0], X.shape[1], 1))
 
-# Predict on the test set
-y_pred = model.predict(X_test_scaled)
+    # Split the data into training and testing sets (80% train, 20% test)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=False)
 
-# If sma_position is categorical (e.g., -1, 0, 1), round predictions to nearest integer
-y_pred_rounded = np.round(y_pred).astype(int)
+    # Standardize the features
+    scaler = StandardScaler()
+    X_train_reshaped = X_train.reshape(-1, X_train.shape[-1])
+    X_test_reshaped = X_test.reshape(-1, X_test.shape[-1])
+    scaler.fit(X_train_reshaped)
+    X_train_scaled = scaler.transform(X_train_reshaped).reshape(X_train.shape)
+    X_test_scaled = scaler.transform(X_test_reshaped).reshape(X_test.shape)
 
-# Calculate performance metrics
-accuracy = accuracy_score(y_test, y_pred_rounded)
-precision = precision_score(y_test, y_pred_rounded, average='weighted', zero_division=0)
-recall = recall_score(y_test, y_pred_rounded, average='weighted', zero_division=0)
-f1 = f1_score(y_test, y_pred_rounded, average='weighted', zero_division=0)
-conf_matrix = confusion_matrix(y_test, y_pred_rounded)
+    # Build the LSTM model
+    model = Sequential([
+        LSTM(100, return_sequences=True, input_shape=(X_train_scaled.shape[1], 1)),
+        Dropout(0.5),
+        LSTM(100, return_sequences=False),
+        Dropout(0.5),
+        Dense(50, activation='relu', kernel_regularizer=l1_l2(l1=1e-4, l2=1e-4)),
+        Dense(1, activation='linear', kernel_regularizer=l1_l2(l1=1e-4, l2=1e-4))  # Linear activation for regression; adjust if sma_position is categorical
+    ])
 
-# Print metrics
-print(f"Accuracy: {accuracy:.4f}")
-print(f"Precision: {precision:.4f}")
-print(f"Recall: {recall:.4f}")
-print(f"F1-Score: {f1:.4f}")
-print("Confusion Matrix:")
-print(conf_matrix)
+    # Compile the model
+    model.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae'])  # Adjust loss if needed for classification
 
-# Save the model if needed
-# model.save('lstm_model.h5')
+    # Custom callback to update progress
+    class ProgressCallback(tf.keras.callbacks.Callback):
+        def on_epoch_end(self, epoch, logs=None):
+            training_progress['current_epoch'] = epoch + 1
+            training_progress['train_loss'].append(logs.get('loss'))
+            training_progress['val_loss'].append(logs.get('val_loss'))
+            time.sleep(0.1)  # Small delay to allow progress updates
+
+    # Train the model
+    history = model.fit(X_train_scaled, y_train, batch_size=256, epochs=20, validation_data=(X_test_scaled, y_test), verbose=1, callbacks=[ProgressCallback()])
+
+    # Predict on the test set
+    y_pred = model.predict(X_test_scaled)
+
+    # If sma_position is categorical (e.g., -1, 0, 1), round predictions to nearest integer
+    y_pred_rounded = np.round(y_pred).astype(int)
+
+    # Calculate performance metrics
+    accuracy = accuracy_score(y_test, y_pred_rounded)
+    precision = precision_score(y_test, y_pred_rounded, average='weighted', zero_division=0)
+    recall = recall_score(y_test, y_pred_rounded, average='weighted', zero_division=0)
+    f1 = f1_score(y_test, y_pred_rounded, average='weighted', zero_division=0)
+    conf_matrix = confusion_matrix(y_test, y_pred_rounded)
+
+    # Print metrics
+    print(f"Accuracy: {accuracy:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall: {recall:.4f}")
+    print(f"F1-Score: {f1:.4f}")
+    print("Confusion Matrix:")
+    print(conf_matrix)
+
+    # Update progress with predictions and test data
+    training_progress['predictions'] = y_pred_rounded.flatten().tolist()
+    training_progress['y_test'] = y_test.tolist()
+    training_progress['status'] = 'completed'
+
+    # Save the model if needed
+    # model.save('lstm_model.h5')
+
+if __name__ == '__main__':
+    # Start training in a background thread
+    training_thread = threading.Thread(target=train_model)
+    training_thread.daemon = True
+    training_thread.start()
+    
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=8080, debug=False)
