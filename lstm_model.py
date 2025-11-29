@@ -184,18 +184,27 @@ def train_model():
     close_prices = data['close'].values
     sma_positions = data['sma_position'].values
 
-    # Create sequences of 45 days for features
+    # Calculate 120-day SMA
+    data['sma_120'] = data['close'].rolling(window=120).mean()
+    
+    # Create sequences of 22 days for features (reduced by factor of 2)
     X = []
     y = []
-    for i in range(45, len(close_prices)):
-        X.append(close_prices[i-45:i])
+    for i in range(120, len(close_prices)):
+        # Features: close prices and SMA values for past 22 days
+        close_features = close_prices[i-22:i]
+        sma_features = data['sma_120'].values[i-22:i]
+        # Combine close prices and SMA as features
+        combined_features = np.column_stack((close_features, sma_features))
+        X.append(combined_features)
         y.append(sma_positions[i])
 
     X = np.array(X)
     y = np.array(y)
 
     # Reshape X for LSTM input: (samples, time steps, features)
-    X = X.reshape((X.shape[0], X.shape[1], 1))
+    # Now we have 2 features per time step (close price and SMA value)
+    X = X.reshape((X.shape[0], X.shape[1], 2))
 
     # Split the data into training and testing sets (80% train, 20% test)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=False)
@@ -210,7 +219,7 @@ def train_model():
 
     # Build the LSTM model
     model = Sequential([
-        LSTM(100, return_sequences=True, input_shape=(X_train_scaled.shape[1], 1)),
+        LSTM(100, return_sequences=True, input_shape=(X_train_scaled.shape[1], 2)),
         Dropout(0.5),
         LSTM(100, return_sequences=False),
         Dropout(0.5),
