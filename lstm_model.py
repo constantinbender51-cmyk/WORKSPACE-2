@@ -191,15 +191,15 @@ def train_model():
     print(f"Debug: Calculated SMA_120, NaN count: {data['sma_120'].isna().sum()}")
     print(f"Debug: Calculated SMA_365, NaN count: {data['sma_365'].isna().sum()}")
     
-    # Create sequences of 22 days for features (reduced by factor of 2)
+    # Create sequences of 1 day for features
     X = []
     y = []
     skipped_count = 0
     for i in range(365, len(close_prices)):
-        # Features: close prices, SMA_120, and SMA_365 values for past 22 days
-        close_features = close_prices[i-22:i]
-        sma_120_features = data['sma_120'].values[i-22:i]
-        sma_365_features = data['sma_365'].values[i-22:i]
+        # Features: close prices, SMA_120, and SMA_365 values for the current day
+        close_features = close_prices[i-1:i]
+        sma_120_features = data['sma_120'].values[i-1:i]
+        sma_365_features = data['sma_365'].values[i-1:i]
         
         # Skip if any NaN values in the sequence
         if np.any(np.isnan(close_features)) or np.any(np.isnan(sma_120_features)) or np.any(np.isnan(sma_365_features)):
