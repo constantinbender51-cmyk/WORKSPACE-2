@@ -59,15 +59,15 @@ def calculate_sma_position(df):
     df['sma_position'] = 0
     
     # Conditions for sma_position
-    # 1 if 365 SMA below current price and not (below 365 SMA and above 120 SMA)
-    condition1 = (df['sma_365'] < df['close']) & ~((df['sma_365'] < df['close']) & (df['close'] > df['sma_120']))
-    # -1 if 365 SMA above current price and not (above 365 SMA and below 120 SMA)
-    condition2 = (df['sma_365'] > df['close']) & ~((df['sma_365'] > df['close']) & (df['close'] < df['sma_120']))
+    # 1 if price above both 120 and 365 SMA
+    condition1 = (df['close'] > df['sma_120']) & (df['close'] > df['sma_365'])
+    # -1 if price below both 120 and 365 SMA
+    condition2 = (df['close'] < df['sma_120']) & (df['close'] < df['sma_365'])
     
     df.loc[condition1, 'sma_position'] = 1
     df.loc[condition2, 'sma_position'] = -1
     
-    # Note: The conditions above simplify the logic based on the description; sma_position remains 0 in other cases.
+    # sma_position remains 0 in other cases
     return df
 
 # Generate the data and CSV
@@ -84,6 +84,8 @@ def generate_plot():
     # Create the plot
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.plot(df['timestamp'], df['close'], label='Close Price', color='blue')
+    ax.plot(df['timestamp'], df['sma_120'], label='SMA 120', color='green', linestyle='--')
+    ax.plot(df['timestamp'], df['sma_365'], label='SMA 365', color='red', linestyle='--')
     ax.set_title('Binance OHLCV Data - Close Price and SMA Position')
     ax.set_xlabel('Date')
     ax.set_ylabel('Price (USD)')
