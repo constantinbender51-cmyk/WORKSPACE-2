@@ -82,15 +82,27 @@ def generate_data():
 def generate_plot():
     df = generate_data()
     # Create the plot
-    plt.figure(figsize=(12, 6))
-    plt.plot(df['timestamp'], df['close'], label='Close Price', color='blue')
-    plt.title('Binance OHLCV Data - Close Price and SMA Position')
-    plt.xlabel('Date')
-    plt.ylabel('Price (USD)')
-    plt.legend()
-    plt.grid(True)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.plot(df['timestamp'], df['close'], label='Close Price', color='blue')
+    ax.set_title('Binance OHLCV Data - Close Price and SMA Position')
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Price (USD)')
+    ax.legend()
+    ax.grid(True)
     plt.xticks(rotation=45)
     plt.tight_layout()
+    
+    # Add background colors based on sma_position
+    for i in range(len(df) - 1):
+        start_date = df['timestamp'].iloc[i]
+        end_date = df['timestamp'].iloc[i + 1]
+        position = df['sma_position'].iloc[i]
+        if position == 1:
+            ax.axvspan(start_date, end_date, color='blue', alpha=0.3)
+        elif position == -1:
+            ax.axvspan(start_date, end_date, color='orange', alpha=0.3)
+        elif position == 0:
+            ax.axvspan(start_date, end_date, color='grey', alpha=0.3)
     
     # Save plot to a bytes buffer
     img = io.BytesIO()
