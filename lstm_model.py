@@ -55,8 +55,10 @@ html_template = '''
     <div id="charts" style="display: {{ charts_display }};">
         <h2>Loss Over Epochs</h2>
         <canvas id="lossChart" width="400" height="200"></canvas>
-        <h2>Predictions vs Actual</h2>
-        <canvas id="predictionChart" width="400" height="200"></canvas>
+        <h2>Training Predictions vs Actual</h2>
+        <canvas id="trainPredictionChart" width="400" height="200"></canvas>
+        <h2>Test Predictions vs Actual</h2>
+        <canvas id="testPredictionChart" width="400" height="200"></canvas>
     </div>
     <script>
         function updateProgress() {
