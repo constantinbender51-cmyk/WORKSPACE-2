@@ -167,7 +167,11 @@ html_template = '''
                     datasets.push({ label: 'Training Price', data: data.train_prices, borderColor: 'orange', fill: false, yAxisID: 'y1' });
                 }
                 if (data.test_prices && data.test_prices.length > 0) {
-                    datasets.push({ label: 'Test Price', data: data.test_prices, borderColor: 'red', fill: false, yAxisID: 'y1' });
+                    // Offset test price indices to start after training price
+                    const testPriceData = data.test_prices;
+                    const trainPriceLength = data.train_prices ? data.train_prices.length : 0;
+                    const testPriceIndices = Array.from({length: testPriceData.length}, (_, i) => i + trainPriceLength);
+                    datasets.push({ label: 'Test Price', data: testPriceData.map((value, index) => ({ x: testPriceIndices[index], y: value })), borderColor: 'red', fill: false, yAxisID: 'y1' });
                 }
                 // Use numerical indices for labels, adjusted for test capital offset
                 const maxLength = Math.max(data.train_capital?.length || 0, (data.test_capital?.length || 0) + (data.train_capital?.length || 0), data.train_prices?.length || 0, data.test_prices?.length || 0);
