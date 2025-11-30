@@ -177,6 +177,8 @@ def download_csv():
     data_df = data_df[available_columns]
     # Rename 'date' to 'datetime' for clarity
     data_df = data_df.rename(columns={'date': 'datetime'})
+    # Drop any rows where any column has NaN values
+    data_df = data_df.dropna()
     csv_data = data_df.to_csv(index=False)
     return csv_data, 200, {'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=ohlcv_sma_model_output.csv'}
 
