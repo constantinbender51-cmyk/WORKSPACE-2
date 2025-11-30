@@ -252,7 +252,7 @@ def train_model():
         LSTM(8, return_sequences=False, kernel_regularizer=l1_l2(l1=2e-4, l2=1e-4)),
         Dropout(0.3),
         Dense(4, activation='tanh', kernel_regularizer=l1_l2(l1=2e-4, l2=1e-4)),
-        Dense(1, activation='linear')  # Linear activation for regression
+        Dense(1, activation='tanh')  # Tanh activation for bounded predictions [-1, 1]
     ])
 
     # Compile the model with gradient clipping
