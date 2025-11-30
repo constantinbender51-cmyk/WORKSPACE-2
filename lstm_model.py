@@ -322,7 +322,7 @@ def train_model():
             print(f"Debug: Training capital calculation - y_train length: {len(y_train)}, train_prices length: {len(train_prices)}")
             
             for i in range(1, len(y_train)):
-                signal = y_train[i-1]  # Use previous day's signal
+                signal = train_pred_continuous[i-1]  # Use previous day's predicted signal
                 price_change = (train_prices[i] - train_prices[i-1]) / train_prices[i-1]
                 capital = train_capital[-1] * (1 + signal * price_change)
                 train_capital.append(capital)
