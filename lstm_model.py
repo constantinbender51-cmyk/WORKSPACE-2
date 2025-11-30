@@ -56,13 +56,13 @@ html_template = '''
     </div>
     <div id="charts" style="display: {{ charts_display }};">
         <h2>Loss Over Epochs</h2>
-        <canvas id="lossChart" width="400" height="170"></canvas>
+        <canvas id="lossChart" width="400" height="145"></canvas>
         <h2>Training Predictions vs Actual</h2>
-        <canvas id="trainPredictionChart" width="400" height="170"></canvas>
+        <canvas id="trainPredictionChart" width="400" height="145"></canvas>
         <h2>Test Predictions vs Actual</h2>
-        <canvas id="testPredictionChart" width="400" height="170"></canvas>
+        <canvas id="testPredictionChart" width="400" height="145"></canvas>
         <h2>Capital Evolution</h2>
-        <canvas id="capitalChart" width="400" height="170"></canvas>
+        <canvas id="capitalChart" width="400" height="145"></canvas>
     </div>
     <script>
         function updateProgress() {
