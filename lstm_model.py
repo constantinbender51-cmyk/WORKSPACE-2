@@ -39,6 +39,7 @@ html_template = '''
 <head>
     <title>Training Progress</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <meta http-equiv="refresh" content="60">
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
@@ -176,6 +177,47 @@ html_template = '''
                 // Use numerical indices for labels, adjusted for test capital offset
                 const maxLength = Math.max(data.train_capital?.length || 0, (data.test_capital?.length || 0) + (data.train_capital?.length || 0), data.train_prices?.length || 0, data.test_prices?.length || 0);
                 const labels = Array.from({length: maxLength}, (_, i) => i);
+                
+                // Create SMA position background annotations
+                const annotations = [];
+                
+                // Process training SMA positions
+                if (data.train_sma_positions && data.train_sma_positions.length > 0) {
+                    data.train_sma_positions.forEach((smaPos, index) => {
+                        const color = smaPos > 0.1 ? 'rgba(0, 255, 0, 0.2)' : 
+                                     smaPos < -0.1 ? 'rgba(255, 0, 0, 0.2)' : 
+                                     'rgba(255, 255, 0, 0.2)';
+                        annotations.push({
+                            type: 'box',
+                            xMin: index - 0.5,
+                            xMax: index + 0.5,
+                            yMin: 'min',
+                            yMax: 'max',
+                            backgroundColor: color,
+                            borderWidth: 0
+                        });
+                    });
+                }
+                
+                // Process test SMA positions with offset
+                if (data.test_sma_positions && data.test_sma_positions.length > 0) {
+                    const testStartIndex = data.train_sma_positions ? data.train_sma_positions.length : 0;
+                    data.test_sma_positions.forEach((smaPos, index) => {
+                        const color = smaPos > 0.1 ? 'rgba(0, 255, 0, 0.2)' : 
+                                     smaPos < -0.1 ? 'rgba(255, 0, 0, 0.2)' : 
+                                     'rgba(255, 255, 0, 0.2)';
+                        annotations.push({
+                            type: 'box',
+                            xMin: testStartIndex + index - 0.5,
+                            xMax: testStartIndex + index + 0.5,
+                            yMin: 'min',
+                            yMax: 'max',
+                            backgroundColor: color,
+                            borderWidth: 0
+                        });
+                    });
+                }
+                
                 window.capitalChartInstance = new Chart(capitalCtx, {
                     type: 'line',
                     data: {
@@ -184,6 +226,11 @@ html_template = '''
                     },
                     options: {
                         responsive: true,
+                        plugins: {
+                            annotation: {
+                                annotations: annotations
+                            }
+                        },
                         scales: {
                             x: {
                                 type: 'linear',
@@ -431,13 +478,15 @@ def train_model():
         capital = test_capital[-1] * (1 + signal * price_change)
         test_capital.append(capital)
 
-    # Store capital, price, and date data
+    # Store capital, price, date data, and SMA positions
     training_progress['train_capital'] = train_capital
     training_progress['test_capital'] = test_capital
     training_progress['train_prices'] = train_prices.tolist()
     training_progress['test_prices'] = test_prices.tolist()
     training_progress['train_dates'] = data['datetime'].values[len(data) - len(y_train):len(data) - len(y_train) + len(y_train)].tolist()
     training_progress['test_dates'] = data['datetime'].values[len(data) - len(y_test):len(data) - len(y_test) + len(y_test)].tolist()
+    training_progress['train_sma_positions'] = y_train.tolist()
+    training_progress['test_sma_positions'] = y_test.tolist()
 
     # Calculate performance metrics using continuous predictions (e.g., MSE, MAE)
     mse = np.mean((y_test - y_pred_continuous) ** 2)
