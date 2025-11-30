@@ -190,11 +190,11 @@ html_template = '''
                     if (i < allSmaPositions.length) {
                         const smaPosition = allSmaPositions[i];
                         if (smaPosition === -1) {
-                            backgroundColors.push('rgba(255, 165, 0, 0.2)'); // Orange
+                            backgroundColors.push('rgba(255, 165, 0, 0.3)'); // Orange
                         } else if (smaPosition === 1) {
-                            backgroundColors.push('rgba(0, 0, 255, 0.2)'); // Blue
+                            backgroundColors.push('rgba(0, 0, 255, 0.3)'); // Blue
                         } else {
-                            backgroundColors.push('rgba(128, 128, 128, 0.2)'); // Grey
+                            backgroundColors.push('rgba(128, 128, 128, 0.3)'); // Grey
                         }
                     } else {
                         backgroundColors.push('transparent');
@@ -213,7 +213,7 @@ html_template = '''
                             x: {
                                 type: 'linear',
                                 display: true,
-                                title: { display: true, text: 'Index' },
+                                title: { display: true, text: 'Day Index' },
                                 grid: {
                                     color: function(context) {
                                         const index = context.tick.value;
@@ -241,18 +241,11 @@ html_template = '''
                                     label: function(context) {
                                         const index = context.dataIndex;
                                         let smaPosition = 'N/A';
-                                        let positionColor = 'grey';
                                         
                                         if (index < trainSmaPositions.length) {
                                             smaPosition = trainSmaPositions[index];
                                         } else if (index - trainSmaPositions.length < testSmaPositions.length) {
                                             smaPosition = testSmaPositions[index - trainSmaPositions.length];
-                                        }
-                                        
-                                        if (smaPosition === -1) {
-                                            positionColor = 'orange';
-                                        } else if (smaPosition === 1) {
-                                            positionColor = 'blue';
                                         }
                                         
                                         const label = context.dataset.label || '';
