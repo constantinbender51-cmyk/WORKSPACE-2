@@ -25,7 +25,9 @@ training_progress = {
     'test_predictions': [],
     'test_actual': [],
     'train_capital': [],
-    'test_capital': []
+    'test_capital': [],
+    'train_dates': [],
+    'test_dates': []
 }
 
 app = Flask(__name__)
@@ -118,7 +120,7 @@ html_template = '''
             window.trainPredictionChartInstance = new Chart(trainPredCtx, {
                 type: 'line',
                 data: {
-                    labels: Array.from({length: data.train_predictions.length}, (_, i) => i),
+                    labels: data.train_dates || Array.from({length: data.train_predictions.length}, (_, i) => i),
                     datasets: [
                         { label: 'Training Predictions', data: data.train_predictions, borderColor: 'green', fill: false },
                         { label: 'Training Actual', data: data.train_actual, borderColor: 'orange', fill: false }
@@ -135,7 +137,7 @@ html_template = '''
             window.testPredictionChartInstance = new Chart(testPredCtx, {
                 type: 'line',
                 data: {
-                    labels: Array.from({length: data.test_predictions.length}, (_, i) => i),
+                    labels: data.test_dates || Array.from({length: data.test_predictions.length}, (_, i) => i),
                     datasets: [
                         { label: 'Test Predictions', data: data.test_predictions, borderColor: 'blue', fill: false },
                         { label: 'Test Actual', data: data.test_actual, borderColor: 'red', fill: false }
@@ -163,10 +165,15 @@ html_template = '''
                 if (data.test_prices && data.test_prices.length > 0) {
                     datasets.push({ label: 'Test Price', data: data.test_prices, borderColor: 'red', fill: false, yAxisID: 'y1' });
                 }
+                // Use dates for labels; fallback to indices if dates not available
+                const maxLength = Math.max(data.train_capital?.length || 0, data.test_capital?.length || 0, data.train_prices?.length || 0, data.test_prices?.length || 0);
+                const labels = data.train_dates && data.train_dates.length >= maxLength ? data.train_dates : 
+                              (data.test_dates && data.test_dates.length >= maxLength ? data.test_dates : 
+                              Array.from({length: maxLength}, (_, i) => i));
                 window.capitalChartInstance = new Chart(capitalCtx, {
                     type: 'line',
                     data: {
-                        labels: Array.from({length: Math.max(data.train_capital?.length || 0, data.test_capital?.length || 0, data.train_prices?.length || 0, data.test_prices?.length || 0)}, (_, i) => i),
+                        labels: labels,
                         datasets: datasets
                     },
                     options: {
@@ -365,7 +372,7 @@ def train_model():
                 capital = test_capital[-1] * (1 + signal * price_change)
                 test_capital.append(capital)
 
-            # Store training and test predictions, actual values, capital, and prices
+            # Store training and test predictions, actual values, capital, prices, and dates
             training_progress['train_predictions'] = train_pred_continuous.tolist()
             training_progress['train_actual'] = y_train.tolist()
             training_progress['test_predictions'] = test_pred_continuous.tolist()
@@ -374,6 +381,8 @@ def train_model():
             training_progress['test_capital'] = test_capital
             training_progress['train_prices'] = train_prices.tolist()
             training_progress['test_prices'] = test_prices.tolist()
+            training_progress['train_dates'] = data['date'].values[train_start_idx:train_start_idx + len(y_train)].tolist()
+            training_progress['test_dates'] = data['date'].values[test_start_idx:test_start_idx + len(y_test)].tolist()
             
             time.sleep(0.1)  # Small delay to allow progress updates
 
@@ -406,11 +415,13 @@ def train_model():
         capital = test_capital[-1] * (1 + signal * price_change)
         test_capital.append(capital)
 
-    # Store capital and price data
+    # Store capital, price, and date data
     training_progress['train_capital'] = train_capital
     training_progress['test_capital'] = test_capital
     training_progress['train_prices'] = train_prices.tolist()
     training_progress['test_prices'] = test_prices.tolist()
+    training_progress['train_dates'] = data['date'].values[len(data) - len(y_train):len(data) - len(y_train) + len(y_train)].tolist()
+    training_progress['test_dates'] = data['date'].values[len(data) - len(y_test):len(data) - len(y_test) + len(y_test)].tolist()
 
     # Calculate performance metrics using continuous predictions (e.g., MSE, MAE)
     mse = np.mean((y_test - y_pred_continuous) ** 2)
