@@ -249,11 +249,9 @@ def train_model():
     model = Sequential([
         LSTM(16, return_sequences=True, input_shape=(X_train_scaled.shape[1], 3), kernel_regularizer=l1_l2(l1=2e-4, l2=1e-4)),
         Dropout(0.3),
-        LSTM(8, return_sequences=True, kernel_regularizer=l1_l2(l1=2e-4, l2=1e-4)),
-        Dropout(0.3),
         LSTM(8, return_sequences=False, kernel_regularizer=l1_l2(l1=2e-4, l2=1e-4)),
         Dropout(0.3),
-        Dense(4, activation='relu', kernel_regularizer=l1_l2(l1=2e-4, l2=1e-4)),
+        Dense(4, activation='tanh', kernel_regularizer=l1_l2(l1=2e-4, l2=1e-4)),
         Dense(1, activation='linear')  # Linear activation for regression
     ])
 
