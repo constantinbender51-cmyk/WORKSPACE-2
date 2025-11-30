@@ -248,6 +248,11 @@ def train_model():
     for col in required_columns:
         if col not in data.columns:
             raise ValueError(f"Column '{col}' not found in the data. Please check the CSV structure.")
+    
+    # Check if 'date' column exists; if not, create a dummy date column using the index
+    if 'date' not in data.columns:
+        print("Warning: 'date' column not found. Creating a dummy date column based on index.")
+        data['date'] = pd.date_range(start='2000-01-01', periods=len(data), freq='D')
 
     # Prepare features and target
     # Features: past 365 days of close prices for each day i (i-1 to i-365)
