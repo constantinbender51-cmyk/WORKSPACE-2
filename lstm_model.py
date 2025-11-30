@@ -176,6 +176,31 @@ html_template = '''
                 // Use numerical indices for labels, adjusted for test capital offset
                 const maxLength = Math.max(data.train_capital?.length || 0, (data.test_capital?.length || 0) + (data.train_capital?.length || 0), data.train_prices?.length || 0, data.test_prices?.length || 0);
                 const labels = Array.from({length: maxLength}, (_, i) => i);
+                
+                // Create background colors based on SMA positions
+                const backgroundColors = [];
+                const trainSmaPositions = data.train_actual || [];
+                const testSmaPositions = data.test_actual || [];
+                
+                // Combine training and test SMA positions
+                const allSmaPositions = [...trainSmaPositions, ...testSmaPositions];
+                
+                // Create background color for each data point
+                for (let i = 0; i < maxLength; i++) {
+                    if (i < allSmaPositions.length) {
+                        const smaPosition = allSmaPositions[i];
+                        if (smaPosition === -1) {
+                            backgroundColors.push('rgba(255, 165, 0, 0.2)'); // Orange
+                        } else if (smaPosition === 1) {
+                            backgroundColors.push('rgba(0, 0, 255, 0.2)'); // Blue
+                        } else {
+                            backgroundColors.push('rgba(128, 128, 128, 0.2)'); // Grey
+                        }
+                    } else {
+                        backgroundColors.push('transparent');
+                    }
+                }
+                
                 window.capitalChartInstance = new Chart(capitalCtx, {
                     type: 'line',
                     data: {
@@ -188,7 +213,13 @@ html_template = '''
                             x: {
                                 type: 'linear',
                                 display: true,
-                                title: { display: true, text: 'Index' }
+                                title: { display: true, text: 'Index' },
+                                grid: {
+                                    color: function(context) {
+                                        const index = context.tick.value;
+                                        return backgroundColors[index] || 'transparent';
+                                    }
+                                }
                             },
                             y: {
                                 type: 'linear',
@@ -202,6 +233,33 @@ html_template = '''
                                 position: 'right',
                                 title: { display: true, text: 'Price ($)' },
                                 grid: { drawOnChartArea: false }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const index = context.dataIndex;
+                                        let smaPosition = 'N/A';
+                                        let positionColor = 'grey';
+                                        
+                                        if (index < trainSmaPositions.length) {
+                                            smaPosition = trainSmaPositions[index];
+                                        } else if (index - trainSmaPositions.length < testSmaPositions.length) {
+                                            smaPosition = testSmaPositions[index - trainSmaPositions.length];
+                                        }
+                                        
+                                        if (smaPosition === -1) {
+                                            positionColor = 'orange';
+                                        } else if (smaPosition === 1) {
+                                            positionColor = 'blue';
+                                        }
+                                        
+                                        const label = context.dataset.label || '';
+                                        const value = context.parsed.y;
+                                        return [`${label}: $${value.toFixed(2)}`, `SMA Position: ${smaPosition}`];
+                                    }
+                                }
                             }
                         }
                     }
