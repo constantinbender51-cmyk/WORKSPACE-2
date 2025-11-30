@@ -185,31 +185,34 @@ def train_model():
     close_prices = data['close'].values
     sma_positions = data['sma_position'].values
 
-    # Calculate 365-day, 120-day SMAs, and SMA 365 - close, then handle NaN values
+    # Calculate 365-day, 120-day SMAs, SMA 365 - close, and close minus 120 SMA, then handle NaN values
     data['sma_365'] = data['close'].rolling(window=365).mean()
     data['sma_120'] = data['close'].rolling(window=120).mean()
     data['sma_365_minus_close'] = data['sma_365'] - data['close']
+    data['close_minus_sma_120'] = data['close'] - data['sma_120']
     print(f"Debug: Calculated SMA_365, NaN count: {data['sma_365'].isna().sum()}")
     print(f"Debug: Calculated SMA_120, NaN count: {data['sma_120'].isna().sum()}")
     print(f"Debug: Calculated SMA_365_minus_close, NaN count: {data['sma_365_minus_close'].isna().sum()}")
+    print(f"Debug: Calculated close_minus_sma_120, NaN count: {data['close_minus_sma_120'].isna().sum()}")
     
     # Create sequences of 2 days for features
     X = []
     y = []
     skipped_count = 0
     for i in range(365, len(close_prices)):
-        # Features: SMA 365 - close, SMA_365, and SMA_120 values for the past 2 days
+        # Features: SMA 365 - close, SMA_365, SMA_120, and close minus 120 SMA values for the past 2 days
         sma_365_minus_close_features = data['sma_365_minus_close'].values[i-2:i]
         sma_365_features = data['sma_365'].values[i-2:i]
         sma_120_features = data['sma_120'].values[i-2:i]
+        close_minus_sma_120_features = data['close_minus_sma_120'].values[i-2:i]
         
         # Skip if any NaN values in the sequence
-        if np.any(np.isnan(sma_365_minus_close_features)) or np.any(np.isnan(sma_365_features)) or np.any(np.isnan(sma_120_features)):
+        if np.any(np.isnan(sma_365_minus_close_features)) or np.any(np.isnan(sma_365_features)) or np.any(np.isnan(sma_120_features)) or np.any(np.isnan(close_minus_sma_120_features)):
             skipped_count += 1
             continue
             
-        # Combine SMA 365 - close, SMA_365, and SMA_120 as features
-        combined_features = np.column_stack((sma_365_minus_close_features, sma_365_features, sma_120_features))
+        # Combine SMA 365 - close, SMA_365, SMA_120, and close minus 120 SMA as features
+        combined_features = np.column_stack((sma_365_minus_close_features, sma_365_features, sma_120_features, close_minus_sma_120_features))
         X.append(combined_features)
         y.append(sma_positions[i])
 
@@ -219,8 +222,8 @@ def train_model():
     print(f"Debug: X shape after array conversion: {X.shape}, y shape: {y.shape}")
 
     # Reshape X for LSTM input: (samples, time steps, features)
-    # Now we have 3 features per time step (SMA 365 - close, SMA_365, SMA_120)
-    X = X.reshape((X.shape[0], X.shape[1], 3))
+    # Now we have 4 features per time step (SMA 365 - close, SMA_365, SMA_120, close minus 120 SMA)
+    X = X.reshape((X.shape[0], X.shape[1], 4))
 
     # Split the data into training and testing sets (80% train, 20% test)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=False)
@@ -246,7 +249,7 @@ def train_model():
 
     # Build the LSTM model with reduced complexity and L1/L2 regularization
     model = Sequential([
-        LSTM(16, return_sequences=True, input_shape=(X_train_scaled.shape[1], 3), kernel_regularizer=l1_l2(l1=4e-4, l2=2e-4)),
+        LSTM(16, return_sequences=True, input_shape=(X_train_scaled.shape[1], 4), kernel_regularizer=l1_l2(l1=4e-4, l2=2e-4)),
         Dropout(0.6),
         LSTM(8, return_sequences=False, kernel_regularizer=l1_l2(l1=4e-4, l2=2e-4)),
         Dropout(0.6),
