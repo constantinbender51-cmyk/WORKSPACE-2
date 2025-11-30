@@ -185,35 +185,32 @@ def train_model():
     close_prices = data['close'].values
     sma_positions = data['sma_position'].values
 
-    # Calculate 7-day, 28-day, 56-day, and 112-day SMAs, then handle NaN values
-    data['sma_7'] = data['close'].rolling(window=7).mean()
-    data['sma_28'] = data['close'].rolling(window=28).mean()
-    data['sma_56'] = data['close'].rolling(window=56).mean()
-    data['sma_112'] = data['close'].rolling(window=112).mean()
-    print(f"Debug: Calculated SMA_7, NaN count: {data['sma_7'].isna().sum()}")
-    print(f"Debug: Calculated SMA_28, NaN count: {data['sma_28'].isna().sum()}")
-    print(f"Debug: Calculated SMA_56, NaN count: {data['sma_56'].isna().sum()}")
-    print(f"Debug: Calculated SMA_112, NaN count: {data['sma_112'].isna().sum()}")
+    # Calculate 365-day, 120-day SMAs, and the ratio of 365-day to 120-day SMA, then handle NaN values
+    data['sma_365'] = data['close'].rolling(window=365).mean()
+    data['sma_120'] = data['close'].rolling(window=120).mean()
+    data['sma_ratio'] = data['sma_365'] / data['sma_120']
+    print(f"Debug: Calculated SMA_365, NaN count: {data['sma_365'].isna().sum()}")
+    print(f"Debug: Calculated SMA_120, NaN count: {data['sma_120'].isna().sum()}")
+    print(f"Debug: Calculated SMA_ratio, NaN count: {data['sma_ratio'].isna().sum()}")
     
     # Create sequences of 2 days for features
     X = []
     y = []
     skipped_count = 0
-    for i in range(112, len(close_prices)):
-        # Features: close prices, SMA_7, SMA_28, SMA_56, and SMA_112 values for the past 2 days
+    for i in range(365, len(close_prices)):
+        # Features: close prices, SMA_365, SMA_120, and SMA_ratio values for the past 2 days
         close_features = close_prices[i-2:i]
-        sma_7_features = data['sma_7'].values[i-2:i]
-        sma_28_features = data['sma_28'].values[i-2:i]
-        sma_56_features = data['sma_56'].values[i-2:i]
-        sma_112_features = data['sma_112'].values[i-2:i]
+        sma_365_features = data['sma_365'].values[i-2:i]
+        sma_120_features = data['sma_120'].values[i-2:i]
+        sma_ratio_features = data['sma_ratio'].values[i-2:i]
         
         # Skip if any NaN values in the sequence
-        if np.any(np.isnan(close_features)) or np.any(np.isnan(sma_7_features)) or np.any(np.isnan(sma_28_features)) or np.any(np.isnan(sma_56_features)) or np.any(np.isnan(sma_112_features)):
+        if np.any(np.isnan(close_features)) or np.any(np.isnan(sma_365_features)) or np.any(np.isnan(sma_120_features)) or np.any(np.isnan(sma_ratio_features)):
             skipped_count += 1
             continue
             
-        # Combine close prices and the 4 SMA values as features
-        combined_features = np.column_stack((close_features, sma_7_features, sma_28_features, sma_56_features, sma_112_features))
+        # Combine close prices and the 3 SMA values as features
+        combined_features = np.column_stack((close_features, sma_365_features, sma_120_features, sma_ratio_features))
         X.append(combined_features)
         y.append(sma_positions[i])
 
@@ -223,8 +220,8 @@ def train_model():
     print(f"Debug: X shape after array conversion: {X.shape}, y shape: {y.shape}")
 
     # Reshape X for LSTM input: (samples, time steps, features)
-    # Now we have 5 features per time step (close price, SMA_7, SMA_28, SMA_56, and SMA_112)
-    X = X.reshape((X.shape[0], X.shape[1], 5))
+    # Now we have 4 features per time step (close price, SMA_365, SMA_120, and SMA_ratio)
+    X = X.reshape((X.shape[0], X.shape[1], 4))
 
     # Split the data into training and testing sets (80% train, 20% test)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=False)
@@ -250,7 +247,7 @@ def train_model():
 
     # Build the LSTM model with reduced complexity and L1/L2 regularization
     model = Sequential([
-        LSTM(16, return_sequences=True, input_shape=(X_train_scaled.shape[1], 5), kernel_regularizer=l1_l2(l1=2e-4, l2=1e-4)),
+        LSTM(16, return_sequences=True, input_shape=(X_train_scaled.shape[1], 4), kernel_regularizer=l1_l2(l1=2e-4, l2=1e-4)),
         Dropout(0.3),
         LSTM(8, return_sequences=False, kernel_regularizer=l1_l2(l1=2e-4, l2=1e-4)),
         Dropout(0.3),
