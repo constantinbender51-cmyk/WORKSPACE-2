@@ -97,7 +97,7 @@ html_template = '''
                         { label: 'Validation Loss', data: data.val_loss, borderColor: 'red', fill: false }
                     ]
                 },
-                options: { responsive: true, scales: { y: { type: 'logarithmic' } } }
+                options: { responsive: true, scales: { y: { type: 'logarithmic', log: true } } }
             });
             
             // Training Prediction chart
