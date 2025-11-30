@@ -177,9 +177,7 @@ def download_csv():
     data_df = data_df[available_columns]
     # Rename 'timestamp' to 'datetime' for clarity
     data_df = data_df.rename(columns={'timestamp': 'datetime'})
-    # Only drop rows where model_output is NaN to preserve historical data
-    # This keeps rows with NaN in sma_position (first 365 rows) but removes rows without predictions
-    data_df = data_df.dropna(subset=['model_output'])
+    # Don't drop any rows - include warmup period with NaN values
     csv_data = data_df.to_csv(index=False)
     return csv_data, 200, {'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=ohlcv_sma_model_output.csv'}
 
