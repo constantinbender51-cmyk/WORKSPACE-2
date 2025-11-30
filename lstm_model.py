@@ -24,8 +24,6 @@ training_progress = {
     'train_actual': [],
     'test_predictions': [],
     'test_actual': [],
-    'train_capital': [],
-    'test_capital': [],
     'train_dates': [],
     'test_dates': []
 }
@@ -63,8 +61,7 @@ html_template = '''
         <canvas id="trainPredictionChart" width="400" height="145"></canvas>
         <h2>Test Predictions vs Actual</h2>
         <canvas id="testPredictionChart" width="400" height="145"></canvas>
-        <h2>Capital Evolution</h2>
-        <canvas id="capitalChart" width="400" height="145"></canvas>
+
     </div>
     <script>
         function updateProgress() {
@@ -146,136 +143,7 @@ html_template = '''
                 options: { responsive: true }
             });
             
-            // Capital Evolution chart
-            const capitalCtx = document.getElementById('capitalChart').getContext('2d');
-            if (window.capitalChartInstance) {
-                window.capitalChartInstance.destroy();
-            }
-            if ((data.train_capital && data.train_capital.length > 0) || (data.test_capital && data.test_capital.length > 0) || (data.train_prices && data.train_prices.length > 0) || (data.test_prices && data.test_prices.length > 0)) {
-                const datasets = [];
-                
-                // Add baseline capital line (grey)
-                const maxLength = Math.max(data.train_capital?.length || 0, (data.test_capital?.length || 0) + (data.train_capital?.length || 0));
-                const baselineCapital = Array(maxLength).fill(1000);
-                datasets.push({ 
-                    label: 'Baseline Capital', 
-                    data: baselineCapital, 
-                    borderColor: 'grey', 
-                    borderDash: [5, 5],
-                    fill: false,
-                    pointRadius: 0
-                });
-                
-                if (data.train_capital && data.train_capital.length > 0) {
-                    datasets.push({ 
-                        label: 'Training Capital', 
-                        data: data.train_capital, 
-                        borderColor: 'blue', 
-                        fill: false,
-                        borderWidth: 2
-                    });
-                }
-                if (data.test_capital && data.test_capital.length > 0) {
-                    // Offset test capital indices to start after training capital
-                    const testCapitalData = data.test_capital;
-                    const trainCapitalLength = data.train_capital ? data.train_capital.length : 0;
-                    const testIndices = Array.from({length: testCapitalData.length}, (_, i) => i + trainCapitalLength);
-                    datasets.push({ 
-                        label: 'Test Capital', 
-                        data: testCapitalData.map((value, index) => ({ x: testIndices[index], y: value })), 
-                        borderColor: 'orange', 
-                        fill: false,
-                        borderWidth: 2
-                    });
-                }
-                if (data.train_prices && data.train_prices.length > 0) {
-                    datasets.push({ 
-                        label: 'Training Price', 
-                        data: data.train_prices, 
-                        borderColor: 'green', 
-                        fill: false, 
-                        yAxisID: 'y1',
-                        borderWidth: 1
-                    });
-                }
-                if (data.test_prices && data.test_prices.length > 0) {
-                    // Offset test price indices to start after training price
-                    const testPriceData = data.test_prices;
-                    const trainPriceLength = data.train_prices ? data.train_prices.length : 0;
-                    const testPriceIndices = Array.from({length: testPriceData.length}, (_, i) => i + trainPriceLength);
-                    datasets.push({ 
-                        label: 'Test Price', 
-                        data: testPriceData.map((value, index) => ({ x: testPriceIndices[index], y: value })), 
-                        borderColor: 'red', 
-                        fill: false, 
-                        yAxisID: 'y1',
-                        borderWidth: 1
-                    });
-                }
-                
-                // Use numerical indices for labels, adjusted for test capital offset
-                const labels = Array.from({length: maxLength}, (_, i) => i);
-                
-                window.capitalChartInstance = new Chart(capitalCtx, {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: datasets
-                    },
-                    options: {
-                        responsive: true,
-                        scales: {
-                            x: {
-                                type: 'linear',
-                                display: true,
-                                title: { display: true, text: 'Day Index' }
-                            },
-                            y: {
-                                type: 'linear',
-                                display: true,
-                                position: 'left',
-                                title: { display: true, text: 'Capital ($)' }
-                            },
-                            y1: {
-                                type: 'linear',
-                                display: true,
-                                position: 'right',
-                                title: { display: true, text: 'Price ($)' },
-                                grid: { drawOnChartArea: false }
-                            }
-                        },
-                        plugins: {
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        const index = context.dataIndex;
-                                        let smaPosition = 'N/A';
-                                        const trainSmaPositions = data.train_actual || [];
-                                        const testSmaPositions = data.test_actual || [];
-                                        
-                                        if (index < trainSmaPositions.length) {
-                                            smaPosition = trainSmaPositions[index];
-                                        } else if (index - trainSmaPositions.length < testSmaPositions.length) {
-                                            smaPosition = testSmaPositions[index - trainSmaPositions.length];
-                                        }
-                                        
-                                        const label = context.dataset.label || '';
-                                        const value = context.parsed.y;
-                                        return [`${label}: $${value.toFixed(2)}`, `SMA Position: ${smaPosition}`];
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            } else {
-                console.warn('Capital or price data not available or empty:', {
-                    train_capital: data.train_capital,
-                    test_capital: data.test_capital,
-                    train_prices: data.train_prices,
-                    test_prices: data.test_prices
-                });
-            }
+
         }
         
         // Update every second
