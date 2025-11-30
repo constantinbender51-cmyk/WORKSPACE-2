@@ -249,10 +249,10 @@ def train_model():
         if col not in data.columns:
             raise ValueError(f"Column '{col}' not found in the data. Please check the CSV structure.")
     
-    # Check if 'date' column exists; if not, create a dummy date column using the index
-    if 'date' not in data.columns:
-        print("Warning: 'date' column not found. Creating a dummy date column based on index.")
-        data['date'] = pd.date_range(start='2000-01-01', periods=len(data), freq='D')
+    # Check if 'datetime' column exists; if not, create a dummy date column using the index
+    if 'datetime' not in data.columns:
+        print("Warning: 'datetime' column not found. Creating a dummy date column based on index.")
+        data['datetime'] = pd.date_range(start='2000-01-01', periods=len(data), freq='D')
 
     # Prepare features and target
     # Features: past 365 days of close prices for each day i (i-1 to i-365)
@@ -386,8 +386,8 @@ def train_model():
             training_progress['test_capital'] = test_capital
             training_progress['train_prices'] = train_prices.tolist()
             training_progress['test_prices'] = test_prices.tolist()
-            training_progress['train_dates'] = data['date'].values[train_start_idx:train_start_idx + len(y_train)].tolist()
-            training_progress['test_dates'] = data['date'].values[test_start_idx:test_start_idx + len(y_test)].tolist()
+            training_progress['train_dates'] = data['datetime'].values[train_start_idx:train_start_idx + len(y_train)].tolist()
+            training_progress['test_dates'] = data['datetime'].values[test_start_idx:test_start_idx + len(y_test)].tolist()
             
             time.sleep(0.1)  # Small delay to allow progress updates
 
@@ -425,8 +425,8 @@ def train_model():
     training_progress['test_capital'] = test_capital
     training_progress['train_prices'] = train_prices.tolist()
     training_progress['test_prices'] = test_prices.tolist()
-    training_progress['train_dates'] = data['date'].values[len(data) - len(y_train):len(data) - len(y_train) + len(y_train)].tolist()
-    training_progress['test_dates'] = data['date'].values[len(data) - len(y_test):len(data) - len(y_test) + len(y_test)].tolist()
+    training_progress['train_dates'] = data['datetime'].values[len(data) - len(y_train):len(data) - len(y_train) + len(y_train)].tolist()
+    training_progress['test_dates'] = data['datetime'].values[len(data) - len(y_test):len(data) - len(y_test) + len(y_test)].tolist()
 
     # Calculate performance metrics using continuous predictions (e.g., MSE, MAE)
     mse = np.mean((y_test - y_pred_continuous) ** 2)
