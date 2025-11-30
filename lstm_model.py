@@ -283,7 +283,7 @@ def train_model():
             time.sleep(0.1)  # Small delay to allow progress updates
 
     # Train the model
-    history = model.fit(X_train_scaled, y_train, batch_size=128, epochs=1600, validation_data=(X_test_scaled, y_test), verbose=1, callbacks=[ProgressCallback()])
+    history = model.fit(X_train_scaled, y_train, batch_size=64, epochs=1600, validation_data=(X_test_scaled, y_test), verbose=1, callbacks=[ProgressCallback()])
 
     # Predict on the test set
     y_pred = model.predict(X_test_scaled)
