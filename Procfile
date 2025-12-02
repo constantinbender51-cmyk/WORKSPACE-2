@@ -1,1 +1,0 @@
-web: python lstm_model.py
