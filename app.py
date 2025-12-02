@@ -90,32 +90,7 @@ def fetch_btc_ohlcv(start_date='2018-01-01', end_date=None):
     
     return df
 
-# Function to calculate Rogers Satchell estimator
-# Rogers Satchell estimator formula: sqrt(1/n * sum((ln(high/close) * ln(high/open) + ln(low/close) * ln(low/open))))
-def calculate_rogers_satchell(df):
-    """
-    Calculate Rogers Satchell volatility estimator.
-    
-    Parameters:
-    df (pandas.DataFrame): DataFrame with 'open', 'high', 'low', 'close' columns
-    
-    Returns:
-    pandas.Series: Rogers Satchell estimator values
-    """
-    # Calculate log returns
-    log_high_close = np.log(df['high'] / df['close'])
-    log_high_open = np.log(df['high'] / df['open'])
-    log_low_close = np.log(df['low'] / df['close'])
-    log_low_open = np.log(df['low'] / df['open'])
-    
-    # Calculate Rogers Satchell estimator for each period
-    rs_estimator = np.sqrt(log_high_close * log_high_open + log_low_close * log_low_open)
-    
-    # Calculate rolling Rogers Satchell estimator (30-day window)
-    window = 30
-    rolling_rs = rs_estimator.rolling(window=window).mean() * np.sqrt(252)  # Annualized
-    
-    return rolling_rs
+
 
 # Function to calculate SMAs
 def calculate_smas(df):
@@ -164,8 +139,8 @@ def calculate_sharpe_ratio(compounded_returns):
     # Calculate Sharpe ratio (annualized)
     sharpe_ratio = (mean_daily_return / std_daily_return) * np.sqrt(252)
     
-    return sharpe_ratio# Function to calculate compounded returns with leverage and stop loss
-def calculate_compounded_returns(df, rs_estimator, factor=3):
+    return sharpe_ratio# Function to calculate compounded returns with fixed leverage and stop loss
+def calculate_compounded_returns(df):
     """
     Calculate compounded returns based on conditions:
     - When price > 365 SMA and > 120 SMA: use positive returns (long position)
@@ -174,12 +149,10 @@ def calculate_compounded_returns(df, rs_estimator, factor=3):
     Apply stop loss: 
       For long positions: if low is 5% below open, returns = -5%
       For short positions: if high is 5% above open, returns = -5%
-    Multiply returns by leverage = 4
+    Multiply returns by fixed leverage = 4
     
     Parameters:
     df (pandas.DataFrame): DataFrame with 'open', 'high', 'low', 'close' columns
-    rs_estimator (pandas.Series): Rogers Satchell estimator values
-    factor (float): Factor to multiply with rs_estimator for leverage (default 3)
     
     Returns:
     pandas.Series: Compounded returns series
@@ -225,7 +198,7 @@ def calculate_compounded_returns(df, rs_estimator, factor=3):
     
     # Otherwise: already 0
     
-    # Calculate leverage (using fixed value 4)
+    # Fixed leverage value
     leverage = 4
     
     # Create leverage Series with same index as adjusted_returns for shifting
@@ -248,19 +221,18 @@ def calculate_compounded_returns(df, rs_estimator, factor=3):
     return compounded_returns
 
 # Function to create plot
-def create_plot(df, rs_estimator, compounded_returns):
+def create_plot(df, compounded_returns):
     """
-    Create a plot with BTC price, Rogers Satchell estimator, and compounded returns.
+    Create a plot with BTC price and compounded returns.
     
     Parameters:
     df (pandas.DataFrame): BTC price data
-    rs_estimator (pandas.Series): Rogers Satchell estimator values
     compounded_returns (pandas.Series): Compounded returns series
     
     Returns:
     str: Base64 encoded image of the plot
     """
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 14), sharex=True)
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
     
     # Plot BTC price with SMAs
     ax1.plot(df.index, df['close'], label='BTC Close Price', color='blue', linewidth=1)
@@ -271,25 +243,18 @@ def create_plot(df, rs_estimator, compounded_returns):
     ax1.plot(sma_365.index, sma_365, label='365-day SMA', color='green', linewidth=1, alpha=0.7)
     
     ax1.set_ylabel('Price (USDT)', fontsize=12)
-    ax1.set_title('BTC/USDT Price, Rogers Satchell Estimator, and Compounded Returns (2018-Present)', fontsize=14)
+    ax1.set_title('BTC/USDT Price and Compounded Returns (2018-Present)', fontsize=14)
     ax1.grid(True, alpha=0.3)
     ax1.legend(loc='upper left')
     
-    # Plot Rogers Satchell estimator
-    ax2.plot(rs_estimator.index, rs_estimator, label='Rogers Satchell Estimator (30-day, Annualized)', 
-             color='red', linewidth=1)
-    ax2.set_ylabel('Volatility Estimator', fontsize=12)
+    # Plot compounded returns with log scale
+    ax2.plot(compounded_returns.index, compounded_returns, 
+             label='Compounded Returns (Fixed Leverage = 4, Stop Loss 5%)', color='purple', linewidth=2)
+    ax2.set_yscale('log')
+    ax2.set_ylabel('Compounded Returns (Normalized, Log Scale)', fontsize=12)
+    ax2.set_xlabel('Date', fontsize=12)
     ax2.grid(True, alpha=0.3)
     ax2.legend(loc='upper left')
-    
-    # Plot compounded returns with log scale
-    ax3.plot(compounded_returns.index, compounded_returns, 
-             label='Compounded Returns (Leverage = 4)', color='purple', linewidth=2)
-    ax3.set_yscale('log')
-    ax3.set_ylabel('Compounded Returns (Normalized, Log Scale)', fontsize=12)
-    ax3.set_xlabel('Date', fontsize=12)
-    ax3.grid(True, alpha=0.3)
-    ax3.legend(loc='upper left')
     
     # Format x-axis
     plt.xticks(rotation=45)
@@ -316,22 +281,17 @@ def index():
     if df.empty:
         return "Error: Could not fetch data from Binance. Please try again later."
     
-    # Calculate Rogers Satchell estimator
-    print("Calculating Rogers Satchell estimator...")
-    rs_estimator = calculate_rogers_satchell(df)
-    
     # Calculate compounded returns
     print("Calculating compounded returns...")
-    compounded_returns = calculate_compounded_returns(df, rs_estimator, factor=1)
+    compounded_returns = calculate_compounded_returns(df)
     
     # Create plot
     print("Creating plot...")
-    plot_url = create_plot(df, rs_estimator, compounded_returns)
+    plot_url = create_plot(df, compounded_returns)
     
     # Get latest values
     latest_price = df['close'].iloc[-1]
     latest_date = df.index[-1].strftime('%Y-%m-%d')
-    latest_rs = rs_estimator.iloc[-1] if not rs_estimator.isna().all() else None
     latest_compounded = compounded_returns.iloc[-1] if not compounded_returns.empty else None
     
     # Calculate Sharpe ratio
@@ -422,10 +382,7 @@ def index():
                     <div class="stat-value">{{ latest_date }}</div>
                     <div class="stat-label">Latest Data Date</div>
                 </div>
-                <div class="stat-box">
-                    <div class="stat-value">{{ latest_rs }}</div>
-                    <div class="stat-label">Latest Rogers Satchell Estimator</div>
-                </div>
+
                 <div class="stat-box">
                     <div class="stat-value">{{ latest_compounded }}</div>
                     <div class="stat-label">Latest Compounded Returns</div>
@@ -443,9 +400,8 @@ def index():
             <div class="info">
                 <h3>About This Visualization</h3>
                 <p><strong>Data Source:</strong> Binance API (BTC/USDT daily OHLCV from 2018-01-01 to present)</p>
-                <p><strong>Rogers Satchell Estimator:</strong> A volatility estimator that accounts for opening jumps. Calculated as: √(1/n * Σ(ln(high/close) * ln(high/open) + ln(low/close) * ln(low/open)))</p>
-                <p><strong>Compounded Returns:</strong> Calculated based on conditions: positive returns when price > 365-day and 120-day SMAs, negative returns when price < both SMAs, otherwise 0. Returns are multiplied by leverage = Rogers Satchell estimator × 3.</p>
-                <p><strong>Plot Details:</strong> Top chart shows BTC closing price with 120-day and 365-day SMAs. Middle chart shows the 30-day rolling Rogers Satchell estimator (annualized). Bottom chart shows compounded returns (normalized to start at 1).</p>
+                <p><strong>Compounded Returns:</strong> Calculated based on conditions: positive returns when price > 365-day and 120-day SMAs, negative returns when price < both SMAs, otherwise 0. Returns are multiplied by fixed leverage = 4 with a 5% stop loss.</p>
+                <p><strong>Plot Details:</strong> Top chart shows BTC closing price with 120-day and 365-day SMAs. Bottom chart shows compounded returns (normalized to start at 1).</p>
                 <p><strong>Note:</strong> This is a technical implementation for educational purposes only.</p>
             </div>
             
@@ -460,7 +416,6 @@ def index():
     return render_template_string(html_template, 
                                  latest_price=f"${latest_price:,.2f}",
                                  latest_date=latest_date,
-                                 latest_rs=f"{latest_rs:.4f}" if latest_rs else "N/A",
                                  latest_compounded=f"{latest_compounded:.4f}" if latest_compounded else "N/A",
                                  sharpe_ratio=f"{sharpe_ratio:.4f}" if sharpe_ratio is not None else "N/A",
                                  plot_url=plot_url)
