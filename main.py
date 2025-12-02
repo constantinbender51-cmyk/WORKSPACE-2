@@ -95,11 +95,6 @@ def fetch_binance_ohlcv(symbol='BTCUSDT', interval='1d', start_date='2017-01-01'
     print(f"Data range: {df.index[0]} to {df.index[-1]}")
     print(f"Total rows: {len(df)}")
     
-    if len(df) < 365:
-        print(f"Warning: Only {len(df)} data points, need at least 365 for full SMA calculations")
-    
-    return df[['open', 'high', 'low', 'close', 'volume']]
-    
     # Check if we have enough data for SMA calculations
     if len(df) < 365:
         print(f"Warning: Only {len(df)} data points, need at least 365 for full SMA calculations")
