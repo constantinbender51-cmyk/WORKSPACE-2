@@ -171,10 +171,10 @@ def calculate_compounded_returns(df):
     below_both = (df['open'] < sma_120) & (df['open'] < sma_365)
     
     # Calculate stop loss conditions
-    # For long positions: low is 5% below open
-    long_stop_loss = (df['low'] <= df['open'] * 0.95)
-    # For short positions: high is 5% above open
-    short_stop_loss = (df['high'] >= df['open'] * 1.05)
+    # For long positions: low is 16% below open
+    long_stop_loss = (df['low'] <= df['open'] * 0.84)
+    # For short positions: high is 16% above open
+    short_stop_loss = (df['high'] >= df['open'] * 1.16)
     
     # Apply conditions with stop loss
     # When above both SMAs (long position)
