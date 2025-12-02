@@ -117,24 +117,102 @@ def calculate_rogers_satchell(df):
     
     return rolling_rs
 
-# Function to create plot
-def create_plot(df, rs_estimator):
+# Function to calculate SMAs
+def calculate_smas(df):
     """
-    Create a plot with BTC price and Rogers Satchell estimator.
+    Calculate 120-day and 365-day simple moving averages.
+    
+    Parameters:
+    df (pandas.DataFrame): DataFrame with 'close' column
+    
+    Returns:
+    tuple: (sma_120, sma_365)
+    """
+    sma_120 = df['close'].rolling(window=120).mean()
+    sma_365 = df['close'].rolling(window=365).mean()
+    return sma_120, sma_365
+
+# Function to calculate compounded returns with leverage
+def calculate_compounded_returns(df, rs_estimator, factor=3):
+    """
+    Calculate compounded returns based on conditions:
+    - When price > 365 SMA and > 120 SMA: use positive returns
+    - When price < 365 SMA and < 120 SMA: use negative returns
+    - Otherwise: 0
+    Multiply returns by leverage = rs_estimator * factor
+    
+    Parameters:
+    df (pandas.DataFrame): DataFrame with 'close' column
+    rs_estimator (pandas.Series): Rogers Satchell estimator values
+    factor (float): Factor to multiply with rs_estimator for leverage (default 3)
+    
+    Returns:
+    pandas.Series: Compounded returns series
+    """
+    # Calculate SMAs
+    sma_120, sma_365 = calculate_smas(df)
+    
+    # Calculate daily returns
+    daily_returns = df['close'].pct_change()
+    
+    # Initialize leverage-adjusted returns with zeros
+    adjusted_returns = pd.Series(0.0, index=df.index)
+    
+    # Create conditions
+    above_both = (df['close'] > sma_120) & (df['close'] > sma_365)
+    below_both = (df['close'] < sma_120) & (df['close'] < sma_365)
+    
+    # Apply conditions
+    # When above both SMAs: use positive returns
+    adjusted_returns[above_both] = daily_returns[above_both]
+    # When below both SMAs: use negative returns (inverse position)
+    adjusted_returns[below_both] = -daily_returns[below_both]
+    # Otherwise: already 0
+    
+    # Calculate leverage (using rs_estimator, fill NaN with 0)
+    leverage = rs_estimator.fillna(0) * factor
+    
+    # Apply leverage
+    leveraged_returns = adjusted_returns * leverage.shift(1)  # Use previous day's leverage
+    
+    # Calculate compounded returns
+    compounded_returns = (1 + leveraged_returns).cumprod()
+    
+    # Normalize to start at 1
+    if not compounded_returns.empty:
+        first_valid = compounded_returns.first_valid_index()
+        if first_valid is not None:
+            start_value = compounded_returns.loc[first_valid]
+            if start_value != 0:
+                compounded_returns = compounded_returns / start_value
+    
+    return compounded_returns
+
+# Function to create plot
+def create_plot(df, rs_estimator, compounded_returns):
+    """
+    Create a plot with BTC price, Rogers Satchell estimator, and compounded returns.
     
     Parameters:
     df (pandas.DataFrame): BTC price data
     rs_estimator (pandas.Series): Rogers Satchell estimator values
+    compounded_returns (pandas.Series): Compounded returns series
     
     Returns:
     str: Base64 encoded image of the plot
     """
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 14), sharex=True)
     
-    # Plot BTC price
+    # Plot BTC price with SMAs
     ax1.plot(df.index, df['close'], label='BTC Close Price', color='blue', linewidth=1)
+    
+    # Calculate and plot SMAs
+    sma_120, sma_365 = calculate_smas(df)
+    ax1.plot(sma_120.index, sma_120, label='120-day SMA', color='orange', linewidth=1, alpha=0.7)
+    ax1.plot(sma_365.index, sma_365, label='365-day SMA', color='green', linewidth=1, alpha=0.7)
+    
     ax1.set_ylabel('Price (USDT)', fontsize=12)
-    ax1.set_title('BTC/USDT Price and Rogers Satchell Estimator (2018-Present)', fontsize=14)
+    ax1.set_title('BTC/USDT Price, Rogers Satchell Estimator, and Compounded Returns (2018-Present)', fontsize=14)
     ax1.grid(True, alpha=0.3)
     ax1.legend(loc='upper left')
     
@@ -142,9 +220,16 @@ def create_plot(df, rs_estimator):
     ax2.plot(rs_estimator.index, rs_estimator, label='Rogers Satchell Estimator (30-day, Annualized)', 
              color='red', linewidth=1)
     ax2.set_ylabel('Volatility Estimator', fontsize=12)
-    ax2.set_xlabel('Date', fontsize=12)
     ax2.grid(True, alpha=0.3)
     ax2.legend(loc='upper left')
+    
+    # Plot compounded returns
+    ax3.plot(compounded_returns.index, compounded_returns, 
+             label='Compounded Returns (Leverage = RS × 3)', color='purple', linewidth=2)
+    ax3.set_ylabel('Compounded Returns (Normalized)', fontsize=12)
+    ax3.set_xlabel('Date', fontsize=12)
+    ax3.grid(True, alpha=0.3)
+    ax3.legend(loc='upper left')
     
     # Format x-axis
     plt.xticks(rotation=45)
@@ -175,14 +260,19 @@ def index():
     print("Calculating Rogers Satchell estimator...")
     rs_estimator = calculate_rogers_satchell(df)
     
+    # Calculate compounded returns
+    print("Calculating compounded returns...")
+    compounded_returns = calculate_compounded_returns(df, rs_estimator, factor=3)
+    
     # Create plot
     print("Creating plot...")
-    plot_url = create_plot(df, rs_estimator)
+    plot_url = create_plot(df, rs_estimator, compounded_returns)
     
     # Get latest values
     latest_price = df['close'].iloc[-1]
     latest_date = df.index[-1].strftime('%Y-%m-%d')
     latest_rs = rs_estimator.iloc[-1] if not rs_estimator.isna().all() else None
+    latest_compounded = compounded_returns.iloc[-1] if not compounded_returns.empty else None
     
     # Create HTML template
     html_template = """
@@ -273,6 +363,10 @@ def index():
                     <div class="stat-value">{{ latest_rs }}</div>
                     <div class="stat-label">Latest Rogers Satchell Estimator</div>
                 </div>
+                <div class="stat-box">
+                    <div class="stat-value">{{ latest_compounded }}</div>
+                    <div class="stat-label">Latest Compounded Returns</div>
+                </div>
             </div>
             
             <div class="plot-container">
@@ -283,7 +377,8 @@ def index():
                 <h3>About This Visualization</h3>
                 <p><strong>Data Source:</strong> Binance API (BTC/USDT daily OHLCV from 2018-01-01 to present)</p>
                 <p><strong>Rogers Satchell Estimator:</strong> A volatility estimator that accounts for opening jumps. Calculated as: √(1/n * Σ(ln(high/close) * ln(high/open) + ln(low/close) * ln(low/open)))</p>
-                <p><strong>Plot Details:</strong> Top chart shows BTC closing price in USDT. Bottom chart shows the 30-day rolling Rogers Satchell estimator (annualized).</p>
+                <p><strong>Compounded Returns:</strong> Calculated based on conditions: positive returns when price > 365-day and 120-day SMAs, negative returns when price < both SMAs, otherwise 0. Returns are multiplied by leverage = Rogers Satchell estimator × 3.</p>
+                <p><strong>Plot Details:</strong> Top chart shows BTC closing price with 120-day and 365-day SMAs. Middle chart shows the 30-day rolling Rogers Satchell estimator (annualized). Bottom chart shows compounded returns (normalized to start at 1).</p>
                 <p><strong>Note:</strong> This is a technical implementation for educational purposes only.</p>
             </div>
             
@@ -299,6 +394,7 @@ def index():
                                  latest_price=f"${latest_price:,.2f}",
                                  latest_date=latest_date,
                                  latest_rs=f"{latest_rs:.4f}" if latest_rs else "N/A",
+                                 latest_compounded=f"{latest_compounded:.4f}" if latest_compounded else "N/A",
                                  plot_url=plot_url)
 
 if __name__ == '__main__':
