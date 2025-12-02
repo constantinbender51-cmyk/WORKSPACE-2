@@ -189,14 +189,14 @@ def calculate_compounded_returns(df):
     # Normal long positions: positive returns from open to close
     # For long positions, return = (close - open) / open = close/open - 1
     adjusted_returns[long_positions] = (df['close'][long_positions] / df['open'][long_positions]) - 1
-    # Stopped long positions: -1% return
-    adjusted_returns[long_stopped] = -0.01
+    # Stopped long positions: -5% return (will be multiplied by leverage)
+    adjusted_returns[long_stopped] = -0.05
     
     # Normal short positions: negative returns from open to close
     # For short positions, return = (open - close) / open = 1 - close/open
     adjusted_returns[short_positions] = 1 - (df['close'][short_positions] / df['open'][short_positions])
-    # Stopped short positions: -1% return
-    adjusted_returns[short_stopped] = -0.01
+    # Stopped short positions: -5% return (will be multiplied by leverage)
+    adjusted_returns[short_stopped] = -0.05
     
     # Otherwise: already 0
     
@@ -402,7 +402,7 @@ def index():
             <div class="info">
                 <h3>About This Visualization</h3>
                 <p><strong>Data Source:</strong> Binance API (BTC/USDT daily OHLCV from 2018-01-01 to present)</p>
-                <p><strong>Compounded Returns:</strong> Calculated based on conditions: positive returns when open price > 365-day and 120-day SMAs (long), negative returns when open price < both SMAs (short), otherwise 0. Stop loss triggers at 5%: long positions stop if low ≤ open * 0.95, short positions stop if high ≥ open * 1.05. Returns are multiplied by fixed leverage = 4.</p>
+                <p><strong>Compounded Returns:</strong> Calculated based on conditions: positive returns when open price > 365-day and 120-day SMAs (long), negative returns when open price < both SMAs (short), otherwise 0. Stop loss triggers at 5%: long positions stop if low ≤ open * 0.95, short positions stop if high ≥ open * 1.05. Stop loss returns are -5% (multiplied by leverage = 4). Returns are multiplied by fixed leverage = 4.</p>
                 <p><strong>Plot Details:</strong> Top chart shows BTC closing price with 120-day and 365-day SMAs. Bottom chart shows compounded returns (normalized to start at 1).</p>
                 <p><strong>Note:</strong> This is a technical implementation for educational purposes only.</p>
             </div>
