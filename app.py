@@ -164,17 +164,20 @@ def calculate_sharpe_ratio(compounded_returns):
     # Calculate Sharpe ratio (annualized)
     sharpe_ratio = (mean_daily_return / std_daily_return) * np.sqrt(252)
     
-    return sharpe_ratio# Function to calculate compounded returns with leverage
+    return sharpe_ratio# Function to calculate compounded returns with leverage and stop loss
 def calculate_compounded_returns(df, rs_estimator, factor=3):
     """
     Calculate compounded returns based on conditions:
-    - When price > 365 SMA and > 120 SMA: use positive returns
-    - When price < 365 SMA and < 120 SMA: use negative returns
+    - When price > 365 SMA and > 120 SMA: use positive returns (long position)
+    - When price < 365 SMA and < 120 SMA: use negative returns (short position)
     - Otherwise: 0
-    Multiply returns by leverage = rs_estimator * factor
+    Apply stop loss: 
+      For long positions: if low is 5% below open, returns = -5%
+      For short positions: if high is 5% above open, returns = -5%
+    Multiply returns by leverage = 4
     
     Parameters:
-    df (pandas.DataFrame): DataFrame with 'close' column
+    df (pandas.DataFrame): DataFrame with 'open', 'high', 'low', 'close' columns
     rs_estimator (pandas.Series): Rogers Satchell estimator values
     factor (float): Factor to multiply with rs_estimator for leverage (default 3)
     
@@ -194,11 +197,32 @@ def calculate_compounded_returns(df, rs_estimator, factor=3):
     above_both = (df['close'] > sma_120) & (df['close'] > sma_365)
     below_both = (df['close'] < sma_120) & (df['close'] < sma_365)
     
-    # Apply conditions
-    # When above both SMAs: use positive returns
-    adjusted_returns[above_both] = daily_returns[above_both]
-    # When below both SMAs: use negative returns (inverse position)
-    adjusted_returns[below_both] = -daily_returns[below_both]
+    # Calculate stop loss conditions
+    # For long positions: low is 5% below open
+    long_stop_loss = (df['low'] <= df['open'] * 0.95)
+    # For short positions: high is 5% above open
+    short_stop_loss = (df['high'] >= df['open'] * 1.05)
+    
+    # Apply conditions with stop loss
+    # When above both SMAs (long position)
+    long_positions = above_both & ~long_stop_loss
+    long_stopped = above_both & long_stop_loss
+    
+    # When below both SMAs (short position)
+    short_positions = below_both & ~short_stop_loss
+    short_stopped = below_both & short_stop_loss
+    
+    # Apply returns
+    # Normal long positions: positive returns
+    adjusted_returns[long_positions] = daily_returns[long_positions]
+    # Stopped long positions: -5% return
+    adjusted_returns[long_stopped] = -0.05
+    
+    # Normal short positions: negative returns
+    adjusted_returns[short_positions] = -daily_returns[short_positions]
+    # Stopped short positions: -5% return
+    adjusted_returns[short_stopped] = -0.05
+    
     # Otherwise: already 0
     
     # Calculate leverage (using fixed value 4)
