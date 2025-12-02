@@ -228,8 +228,11 @@ def calculate_compounded_returns(df, rs_estimator, factor=3):
     # Calculate leverage (using fixed value 4)
     leverage = 4
     
-    # Apply leverage
-    leveraged_returns = adjusted_returns * leverage.shift(1)  # Use previous day's leverage
+    # Create leverage Series with same index as adjusted_returns for shifting
+    leverage_series = pd.Series(leverage, index=adjusted_returns.index)
+    
+    # Apply leverage using previous day's leverage
+    leveraged_returns = adjusted_returns * leverage_series.shift(1)
     
     # Calculate compounded returns
     compounded_returns = (1 + leveraged_returns).cumprod()
