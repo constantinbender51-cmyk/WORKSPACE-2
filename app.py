@@ -132,7 +132,39 @@ def calculate_smas(df):
     sma_365 = df['close'].rolling(window=365).mean()
     return sma_120, sma_365
 
-# Function to calculate compounded returns with leverage
+
+# Function to calculate Sharpe ratio
+def calculate_sharpe_ratio(compounded_returns):
+    """
+    Calculate Sharpe ratio from compounded returns.
+    
+    Parameters:
+    compounded_returns (pandas.Series): Compounded returns series
+    
+    Returns:
+    float: Annualized Sharpe ratio
+    """
+    if compounded_returns.empty or len(compounded_returns) < 2:
+        return None
+    
+    # Calculate daily returns from compounded returns
+    daily_returns = compounded_returns.pct_change().dropna()
+    
+    if len(daily_returns) == 0:
+        return None
+    
+    # Calculate mean and std of daily returns
+    mean_daily_return = daily_returns.mean()
+    std_daily_return = daily_returns.std()
+    
+    # Avoid division by zero
+    if std_daily_return == 0:
+        return None
+    
+    # Calculate Sharpe ratio (annualized)
+    sharpe_ratio = (mean_daily_return / std_daily_return) * np.sqrt(252)
+    
+    return sharpe_ratio# Function to calculate compounded returns with leverage
 def calculate_compounded_returns(df, rs_estimator, factor=3):
     """
     Calculate compounded returns based on conditions:
@@ -275,6 +307,9 @@ def index():
     latest_rs = rs_estimator.iloc[-1] if not rs_estimator.isna().all() else None
     latest_compounded = compounded_returns.iloc[-1] if not compounded_returns.empty else None
     
+    # Calculate Sharpe ratio
+    sharpe_ratio = calculate_sharpe_ratio(compounded_returns)
+    
     # Create HTML template
     html_template = """
     <!DOCTYPE html>
@@ -368,6 +403,10 @@ def index():
                     <div class="stat-value">{{ latest_compounded }}</div>
                     <div class="stat-label">Latest Compounded Returns</div>
                 </div>
+                <div class="stat-box">
+                    <div class="stat-value">{{ sharpe_ratio }}</div>
+                    <div class="stat-label">Sharpe Ratio (Annualized)</div>
+                </div>
             </div>
             
             <div class="plot-container">
@@ -396,6 +435,7 @@ def index():
                                  latest_date=latest_date,
                                  latest_rs=f"{latest_rs:.4f}" if latest_rs else "N/A",
                                  latest_compounded=f"{latest_compounded:.4f}" if latest_compounded else "N/A",
+                                 sharpe_ratio=f"{sharpe_ratio:.4f}" if sharpe_ratio is not None else "N/A",
                                  plot_url=plot_url)
 
 if __name__ == '__main__':
