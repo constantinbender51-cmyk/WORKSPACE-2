@@ -171,10 +171,10 @@ def calculate_compounded_returns(df):
     below_both = (df['close'] < sma_120) & (df['close'] < sma_365)
     
     # Calculate stop loss conditions
-    # For long positions: low is 5% below open
-    long_stop_loss = (df['low'] <= df['open'] * 0.95)
-    # For short positions: high is 5% above open
-    short_stop_loss = (df['high'] >= df['open'] * 1.05)
+    # For long positions: low is 3% below open
+    long_stop_loss = (df['low'] <= df['open'] * 0.97)
+    # For short positions: high is 3% above open
+    short_stop_loss = (df['high'] >= df['open'] * 1.03)
     
     # Apply conditions with stop loss
     # When above both SMAs (long position)
@@ -188,13 +188,13 @@ def calculate_compounded_returns(df):
     # Apply returns
     # Normal long positions: positive returns
     adjusted_returns[long_positions] = daily_returns[long_positions]
-    # Stopped long positions: -5% return
-    adjusted_returns[long_stopped] = -0.05
+    # Stopped long positions: -3% return
+    adjusted_returns[long_stopped] = -0.03
     
     # Normal short positions: negative returns
     adjusted_returns[short_positions] = -daily_returns[short_positions]
-    # Stopped short positions: -5% return
-    adjusted_returns[short_stopped] = -0.05
+    # Stopped short positions: -3% return
+    adjusted_returns[short_stopped] = -0.03
     
     # Otherwise: already 0
     
@@ -249,7 +249,7 @@ def create_plot(df, compounded_returns):
     
     # Plot compounded returns with log scale
     ax2.plot(compounded_returns.index, compounded_returns, 
-             label='Compounded Returns (Fixed Leverage = 4, Stop Loss 5%)', color='purple', linewidth=2)
+             label='Compounded Returns (Fixed Leverage = 4, Stop Loss 3%)', color='purple', linewidth=2)
     ax2.set_yscale('log')
     ax2.set_ylabel('Compounded Returns (Normalized, Log Scale)', fontsize=12)
     ax2.set_xlabel('Date', fontsize=12)
@@ -400,7 +400,7 @@ def index():
             <div class="info">
                 <h3>About This Visualization</h3>
                 <p><strong>Data Source:</strong> Binance API (BTC/USDT daily OHLCV from 2018-01-01 to present)</p>
-                <p><strong>Compounded Returns:</strong> Calculated based on conditions: positive returns when price > 365-day and 120-day SMAs, negative returns when price < both SMAs, otherwise 0. Returns are multiplied by fixed leverage = 4 with a 5% stop loss.</p>
+                <p><strong>Compounded Returns:</strong> Calculated based on conditions: positive returns when price > 365-day and 120-day SMAs, negative returns when price < both SMAs, otherwise 0. Returns are multiplied by fixed leverage = 4 with a 3% stop loss.</p>
                 <p><strong>Plot Details:</strong> Top chart shows BTC closing price with 120-day and 365-day SMAs. Bottom chart shows compounded returns (normalized to start at 1).</p>
                 <p><strong>Note:</strong> This is a technical implementation for educational purposes only.</p>
             </div>
