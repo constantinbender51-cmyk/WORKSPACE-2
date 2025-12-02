@@ -225,7 +225,7 @@ def create_plot(df, rs_estimator, compounded_returns):
     
     # Plot compounded returns
     ax3.plot(compounded_returns.index, compounded_returns, 
-             label='Compounded Returns (Leverage = RS × 3)', color='purple', linewidth=2)
+             label='Compounded Returns (Leverage = RS × 1)', color='purple', linewidth=2)
     ax3.set_ylabel('Compounded Returns (Normalized)', fontsize=12)
     ax3.set_xlabel('Date', fontsize=12)
     ax3.grid(True, alpha=0.3)
@@ -262,7 +262,7 @@ def index():
     
     # Calculate compounded returns
     print("Calculating compounded returns...")
-    compounded_returns = calculate_compounded_returns(df, rs_estimator, factor=3)
+    compounded_returns = calculate_compounded_returns(df, rs_estimator, factor=1)
     
     # Create plot
     print("Creating plot...")
