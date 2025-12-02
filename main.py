@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import flask
 from flask import Flask, render_template
 import plotly.graph_objs as go
 import plotly.utils
@@ -281,7 +282,7 @@ if __name__ == '__main__':
     print("Starting Flask server on port 8080...")
     print(f"Python version: {sys.version}")
     print(f"Pandas version: {pd.__version__}")
-    print(f"Flask version: {Flask.__version__}")
+    print(f"Flask version: {flask.__version__}")
     print("\nServer will output detailed console logs for debugging.")
     print("Visit http://localhost:8080 to see the analysis.\n")
     app.run(host='0.0.0.0', port=8080, debug=True)
