@@ -98,13 +98,13 @@ def calculate_smas(df):
     Calculate 120-day and 365-day simple moving averages.
     
     Parameters:
-    df (pandas.DataFrame): DataFrame with 'close' column
+    df (pandas.DataFrame): DataFrame with 'open' column
     
     Returns:
     tuple: (sma_120, sma_365)
     """
-    sma_120 = df['close'].rolling(window=120).mean()
-    sma_365 = df['close'].rolling(window=365).mean()
+    sma_120 = df['open'].rolling(window=120).mean()
+    sma_365 = df['open'].rolling(window=365).mean()
     return sma_120, sma_365
 
 
