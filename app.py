@@ -154,51 +154,8 @@ def calculate_compounded_returns(df):
     Returns:
     pandas.Series: Compounded returns series
     """
-    # Calculate SMAs
-    sma_120, sma_365 = calculate_smas(df)
-    
-    # Calculate daily returns (close to close)
-    daily_returns = df['close'].pct_change()
-    
-    # Initialize leverage-adjusted returns with zeros
-    adjusted_returns = pd.Series(0.0, index=df.index)
-    
-    # Create conditions based on OPEN price
-    above_both = (df['open'] > sma_120) & (df['open'] > sma_365)
-    below_both = (df['open'] < sma_120) & (df['open'] < sma_365)
-    
-    # Apply returns based on conditions
-    # When above both SMAs (long position): positive returns from open to close
-    # For long positions, return = (close - open) / open = close/open - 1
-    adjusted_returns[above_both] = (df['close'][above_both] / df['open'][above_both]) - 1
-    
-    # When below both SMAs (short position): negative returns from open to close
-    # For short positions, return = (open - close) / open = 1 - close/open
-    adjusted_returns[below_both] = 1 - (df['close'][below_both] / df['open'][below_both])
-    
-    # Otherwise: already 0
-    
-    # Fixed leverage value
-    leverage = 4
-    
-    # Create leverage Series with same index as adjusted_returns for shifting
-    leverage_series = pd.Series(leverage, index=adjusted_returns.index)
-    
-    # Apply leverage using previous day's leverage
-    leveraged_returns = adjusted_returns * leverage_series.shift(1)
-    
-    # Calculate compounded returns
-    compounded_returns = (1 + leveraged_returns).cumprod()
-    
-    # Normalize to start at 1
-    if not compounded_returns.empty:
-        first_valid = compounded_returns.first_valid_index()
-        if first_valid is not None:
-            start_value = compounded_returns.loc[first_valid]
-            if start_value != 0:
-                compounded_returns = compounded_returns / start_value
-    
-    return compounded_returns
+    # Return empty Series as compound return logic is removed
+    return pd.Series(dtype=float)
 
 # Function to create plot
 def create_plot(df, compounded_returns):
@@ -212,7 +169,7 @@ def create_plot(df, compounded_returns):
     Returns:
     str: Base64 encoded image of the plot
     """
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
+    fig, ax1 = plt.subplots(1, 1, figsize=(12, 6))
     
     # Plot BTC price with SMAs
     ax1.plot(df.index, df['close'], label='BTC Close Price', color='blue', linewidth=1)
@@ -223,18 +180,10 @@ def create_plot(df, compounded_returns):
     ax1.plot(sma_365.index, sma_365, label='365-day SMA', color='green', linewidth=1, alpha=0.7)
     
     ax1.set_ylabel('Price (USDT)', fontsize=12)
-    ax1.set_title('BTC/USDT Price and Compounded Returns (2018-Present)', fontsize=14)
+    ax1.set_title('BTC/USDT Price (2018-Present)', fontsize=14)
     ax1.grid(True, alpha=0.3)
     ax1.legend(loc='upper left')
-    
-    # Plot compounded returns with log scale
-    ax2.plot(compounded_returns.index, compounded_returns, 
-             label='Compounded Returns (Fixed Leverage = 4)', color='purple', linewidth=2)
-    ax2.set_yscale('log')
-    ax2.set_ylabel('Compounded Returns (Normalized, Log Scale)', fontsize=12)
-    ax2.set_xlabel('Date', fontsize=12)
-    ax2.grid(True, alpha=0.3)
-    ax2.legend(loc='upper left')
+    ax1.set_xlabel('Date', fontsize=12)
     
     # Format x-axis
     plt.xticks(rotation=45)
@@ -363,10 +312,7 @@ def index():
                     <div class="stat-label">Latest Data Date</div>
                 </div>
 
-                <div class="stat-box">
-                    <div class="stat-value">{{ latest_compounded }}</div>
-                    <div class="stat-label">Latest Compounded Returns</div>
-                </div>
+
                 <div class="stat-box">
                     <div class="stat-value">{{ sharpe_ratio }}</div>
                     <div class="stat-label">Sharpe Ratio (Annualized)</div>
@@ -380,13 +326,12 @@ def index():
             <div class="info">
                 <h3>About This Visualization</h3>
                 <p><strong>Data Source:</strong> Binance API (BTC/USDT daily OHLCV from 2018-01-01 to present)</p>
-                <p><strong>Compounded Returns:</strong> Calculated based on conditions: positive returns when open price > 365-day and 120-day SMAs (long), negative returns when open price < both SMAs (short), otherwise 0. Returns are multiplied by fixed leverage = 4.</p>
-                <p><strong>Plot Details:</strong> Top chart shows BTC closing price with 120-day and 365-day SMAs. Bottom chart shows compounded returns (normalized to start at 1).</p>
+                <p><strong>Plot Details:</strong> Chart shows BTC closing price with 120-day and 365-day SMAs.</p>
                 <p><strong>Note:</strong> This is a technical implementation for educational purposes only.</p>
             </div>
             
             <div class="footer">
-                <p>Data fetched from Binance | Rogers Satchell estimator calculated on daily data | Server running on port 8080</p>
+                <p>Data fetched from Binance | Server running on port 8080</p>
             </div>
         </div>
     </body>
