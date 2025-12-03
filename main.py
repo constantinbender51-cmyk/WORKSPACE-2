@@ -153,35 +153,41 @@ First few rows:
 """
         
         # Filter out NaNs for plotting to avoid errors
-        plot_data_for_scaling = resampled.dropna(subset=['range', 'range_to_volume'])
+        # We need to consider the 'close' price for plotting as well
+        plot_data = resampled.dropna(subset=['close', 'range', 'range_to_volume'])
         for period in sma_periods:
             if f'SMA_{period}' in resampled.columns:
-                plot_data_for_scaling = plot_data_for_scaling.dropna(subset=[f'SMA_{period}'])
+                plot_data = plot_data.dropna(subset=[f'SMA_{period}'])
 
         # Apply Min-Max scaling to 'range' and 'range_to_volume'
-        scaler = MinMaxScaler()
-        plot_data_for_scaling[['range_scaled', 'range_to_volume_scaled']] = scaler.fit_transform(plot_data_for_scaling[['range', 'range_to_volume']])
+        scaler_range_vol = MinMaxScaler()
+        plot_data[['range_scaled', 'range_to_volume_scaled']] = scaler_range_vol.fit_transform(plot_data[['range', 'range_to_volume']])
 
-        # Create matplotlib plot
-        plt.figure(figsize=(12, 8)) # Increased figure height to accommodate more plots
-        
-        # Plotting scaled 'range' and 'range_to_volume'
-        plt.plot(plot_data_for_scaling[datetime_col], plot_data_for_scaling['range_scaled'], label='Scaled Range (0-1)', color='purple', linewidth=1)
-        plt.plot(plot_data_for_scaling[datetime_col], plot_data_for_scaling['range_to_volume_scaled'], label='Scaled Range/Volume (0-1)', color='orange', linewidth=1)
+        # Create matplotlib plot with two y-axes
+        fig, ax1 = plt.subplots(figsize=(12, 8))
 
-        # Plot SMAs, also scaled if they represent values that should be in the 0-1 range, otherwise plot as is.
-        # For simplicity and to adhere to the '0 to 1 range spans the entire plot' for these specific metrics,
-        # we will only plot the scaled range and range_to_volume on the primary y-axis.
-        # If SMAs also need to be scaled, additional logic would be required.
-        # For now, we are focusing on scaling the requested 'range' and 'range_to_volume'.
+        # Plot 'close' price on the primary y-axis (ax1)
+        ax1.plot(plot_data[datetime_col], plot_data['close'], label='Close Price', color='blue', linewidth=1)
+        ax1.set_xlabel('Date/Time')
+        ax1.set_ylabel('Close Price', color='blue')
+        ax1.tick_params(axis='y', labelcolor='blue')
 
-        plt.title('Scaled Range and Range/Volume')
-        plt.xlabel('Date/Time')
-        plt.ylabel('Scaled Value (0-1)')
-        plt.legend(loc='best')
+        # Create a secondary y-axis for scaled metrics
+        ax2 = ax1.twinx()
+        ax2.plot(plot_data[datetime_col], plot_data['range_scaled'], label='Scaled Range (0-1)', color='purple', linewidth=1)
+        ax2.plot(plot_data[datetime_col], plot_data['range_to_volume_scaled'], label='Scaled Range/Volume (0-1)', color='orange', linewidth=1)
+        ax2.set_ylabel('Scaled Value (0-1)', color='purple') # Using purple for this axis label
+        ax2.tick_params(axis='y', labelcolor='purple')
+        ax2.set_ylim(0, 1) # Ensure Y axis for scaled data spans from 0 to 1
+
+        # Combine legends from both axes
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines1 + lines2, labels1 + labels2, loc='best')
+
+        plt.title('Close Price vs. Scaled Range and Range/Volume')
         plt.grid(True, linestyle='--', alpha=0.5)
-        plt.ylim(0, 1) # Ensure Y axis spans from 0 to 1
-        plt.tight_layout()
+        plt.tight_layout() # Adjust layout to prevent overlap
         
         # Save plot to a bytes buffer and encode as base64
         buf = io.BytesIO()
