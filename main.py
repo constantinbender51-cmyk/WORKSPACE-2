@@ -11,9 +11,8 @@ DOWNLOAD_URL = f'https://drive.google.com/uc?id={FILE_ID}'
 INPUT_FILENAME = 'ohlcv_1min.csv'
 OUTPUT_FILENAME = 'ohlcv_all_timeframes.csv'
 
-# Timeframes for resampling in minutes
+# Timeframes for resampling in minutes (5 minutes is the baseline, so start from 10 minutes)
 TIMEFRAMES = {
-    '5min': '5T',
     '10min': '10T',
     '30min': '30T',
     'hourly': '1H',
@@ -62,6 +61,8 @@ def process_data():
     # Ensure data is sorted by timestamp
     df.sort_index(inplace=True)
     
+    # Note: 1-minute data is loaded but will be resampled to 5 minutes as baseline
+    
     # Dictionary to store resampled dataframes
     resampled_dfs = {}
     
@@ -91,12 +92,20 @@ def process_data():
     # Merge all dataframes on timestamp
     print("Merging all timeframes...")
     
-    # Start with the original 1-minute data (reset index to have timestamp as column)
-    df_1min = df.reset_index()
-    df_1min.columns = [f'{col}_1min' if col != 'timestamp' else 'timestamp' for col in df_1min.columns]
+    # Start with the 5-minute baseline data (resample 1-minute to 5 minutes first)
+    ohlc_dict = {
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last',
+        'volume': 'sum'
+    }
+    df_5min = df.resample('5T').apply(ohlc_dict)
+    df_5min.columns = [f'{col}_5min' for col in df_5min.columns]
+    df_5min.reset_index(inplace=True)
     
     # Merge all dataframes
-    merged_df = df_1min
+    merged_df = df_5min
     for tf_name, tf_df in resampled_dfs.items():
         merged_df = pd.merge(merged_df, tf_df, on='timestamp', how='outer')
     
@@ -170,8 +179,7 @@ def start_web_server():
                 <div class="info">
                     <p>This file contains OHLCV (Open, High, Low, Close, Volume) data resampled to multiple timeframes:</p>
                     <ul>
-                        <li>1 minute (original)</li>
-                        <li>5 minutes</li>
+                        <li>5 minutes (baseline)</li>
                         <li>10 minutes</li>
                         <li>30 minutes</li>
                         <li>Hourly</li>
