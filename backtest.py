@@ -20,6 +20,7 @@ ANNUALIZATION_FACTOR = 365 # Crypto trades 365 days a year
 # Grid Search Ranges
 SMA1_RANGE = range(10, 501, 10) 
 SMA2_RANGE = range(10, 181, 10)
+SMA3_RANGE = range(10, 181, 10) # Added 3rd SMA
 STOP_LOSS_RANGE = np.arange(0.01, 0.105, 0.005) # 1% to 10% step 0.5%
 LEVERAGE_RANGE = np.arange(1.0, 5.5, 0.5)       # 1x to 5x step 0.5
 
@@ -107,7 +108,8 @@ def run_grid_search(df):
     # -----------------------------------
     # A. Pre-calculate SMAs
     # -----------------------------------
-    all_periods = sorted(list(set(list(SMA1_RANGE) + list(SMA2_RANGE))))
+    # Collect all unique periods needed for SMA1, SMA2, and SMA3
+    all_periods = sorted(list(set(list(SMA1_RANGE) + list(SMA2_RANGE) + list(SMA3_RANGE))))
     smas = {}
     
     for p in all_periods:
@@ -141,8 +143,8 @@ def run_grid_search(df):
     best_sharpe = -999.0
     best_params = {}
     
-    total_iter = len(SMA1_RANGE) * len(SMA2_RANGE)
-    print(f"Starting Sharpe Optimization over {total_iter} SMA pairs...")
+    total_iter = len(SMA1_RANGE) * len(SMA2_RANGE) * len(SMA3_RANGE)
+    print(f"Starting Sharpe Optimization over {total_iter} SMA triplets...")
     
     count = 0
     start_time = time.time()
@@ -151,75 +153,75 @@ def run_grid_search(df):
         sma1_arr = smas[sma1_p]
         
         for sma2_p in SMA2_RANGE:
-            if sma1_p == sma2_p: continue
-            
             sma2_arr = smas[sma2_p]
-            count += 1
             
-            # 1. Calculate Signals
-            # Long: Open > SMA1 & Open > SMA2
-            mask_long = ((opens > sma1_arr) & (opens > sma2_arr)).astype(int)
-            
-            # Short: Open < SMA1 & Open < SMA2
-            mask_short = ((opens < sma1_arr) & (opens < sma2_arr)).astype(int)
-            
-            # Skip if minimal activity
-            if np.sum(mask_long) + np.sum(mask_short) < 10:
-                continue
+            for sma3_p in SMA3_RANGE:
+                # Redundancy check: If periods are identical, logic is same as 2 SMAs, but we allow it for completeness.
+                # Optimization: Condition is "Above All". Order doesn't matter, but ranges differ.
+                
+                sma3_arr = smas[sma3_p]
+                count += 1
+                
+                # 1. Calculate Signals
+                # Long: Open > SMA1 & Open > SMA2 & Open > SMA3
+                mask_long = (
+                    (opens > sma1_arr) & 
+                    (opens > sma2_arr) & 
+                    (opens > sma3_arr)
+                ).astype(int)
+                
+                # Short: Open < SMA1 & Open < SMA2 & Open < SMA3
+                mask_short = (
+                    (opens < sma1_arr) & 
+                    (opens < sma2_arr) & 
+                    (opens < sma3_arr)
+                ).astype(int)
+                
+                # Skip if minimal activity
+                if np.sum(mask_long) + np.sum(mask_short) < 10:
+                    continue
 
-            # 2. Loop Stop Losses
-            for s_val in STOP_LOSS_RANGE:
-                
-                # Base Strategy Returns (Leverage = 1)
-                r_l = long_returns_map[s_val]
-                r_s = short_returns_map[s_val]
-                
-                # Daily return vector (0.0 if Flat)
-                base_daily_rets = (mask_long * r_l) + (mask_short * r_s)
-                
-                # Optimization Trick:
-                # With RiskFreeRate=0, Sharpe is invariant to leverage UNLESS we bust.
-                # We calculate Sharpe on base returns first.
-                
-                mean_ret = np.mean(base_daily_rets)
-                std_ret = np.std(base_daily_rets)
-                
-                if std_ret == 0:
-                    current_sharpe = -999.0
-                else:
-                    # Annualized Sharpe Formula
-                    current_sharpe = np.sqrt(ANNUALIZATION_FACTOR) * (mean_ret / std_ret)
-                
-                # 3. Loop Leverage (Check for Busts)
-                # We iterate leverage to ensure the strategy survives.
-                # If it survives, Sharpe is the same as base (for Rf=0).
-                # If equal Sharpe, we prefer LOWER leverage.
-                
-                # Find max drawdown in a single day (min return)
-                min_daily_ret = np.min(base_daily_rets)
-                
-                for lev in LEVERAGE_RANGE:
-                    # Check Bankruptcy: if min_ret * lev <= -100% (-1.0)
-                    if min_daily_ret * lev <= -1.0:
-                        # Strategy busts at this leverage
-                        continue
+                # 2. Loop Stop Losses
+                for s_val in STOP_LOSS_RANGE:
                     
-                    # Valid leverage. 
-                    # If this Sharpe is new best, store it.
-                    # Since we loop leverage low->high, we automatically keep lowest valid lev for same Sharpe.
-                    if current_sharpe > best_sharpe:
-                        best_sharpe = current_sharpe
-                        best_params = {
-                            'SMA1': sma1_p,
-                            'SMA2': sma2_p,
-                            'StopLoss': round(s_val * 100, 2),
-                            'Leverage': lev,
-                            'Sharpe': round(current_sharpe, 4),
-                            'AvgDailyRet': round(mean_ret * lev * 100, 4)
-                        }
+                    # Base Strategy Returns (Leverage = 1)
+                    r_l = long_returns_map[s_val]
+                    r_s = short_returns_map[s_val]
+                    
+                    # Daily return vector (0.0 if Flat)
+                    base_daily_rets = (mask_long * r_l) + (mask_short * r_s)
+                    
+                    mean_ret = np.mean(base_daily_rets)
+                    std_ret = np.std(base_daily_rets)
+                    
+                    if std_ret == 0:
+                        current_sharpe = -999.0
+                    else:
+                        # Annualized Sharpe Formula
+                        current_sharpe = np.sqrt(ANNUALIZATION_FACTOR) * (mean_ret / std_ret)
+                    
+                    # 3. Loop Leverage (Check for Busts)
+                    min_daily_ret = np.min(base_daily_rets)
+                    
+                    for lev in LEVERAGE_RANGE:
+                        # Check Bankruptcy
+                        if min_daily_ret * lev <= -1.0:
+                            continue
+                        
+                        if current_sharpe > best_sharpe:
+                            best_sharpe = current_sharpe
+                            best_params = {
+                                'SMA1': sma1_p,
+                                'SMA2': sma2_p,
+                                'SMA3': sma3_p,
+                                'StopLoss': round(s_val * 100, 2),
+                                'Leverage': lev,
+                                'Sharpe': round(current_sharpe, 4),
+                                'AvgDailyRet': round(mean_ret * lev * 100, 4)
+                            }
 
-            if count % 100 == 0:
-                print(f"Processed {count}/{total_iter}... Best Sharpe: {best_params.get('Sharpe', -999)}", end='\r')
+                if count % 500 == 0:
+                    print(f"Processed {count}/{total_iter}... Best Sharpe: {best_params.get('Sharpe', -999)}", end='\r')
 
     end_time = time.time()
     print(f"\n\nOptimization Complete in {end_time - start_time:.2f} seconds.")
@@ -242,6 +244,7 @@ if __name__ == "__main__":
     print(f"Parameters:")
     print(f"  SMA 1 Period:    {result['SMA1']}")
     print(f"  SMA 2 Period:    {result['SMA2']}")
+    print(f"  SMA 3 Period:    {result['SMA3']}")
     print(f"  Stop Loss:       {result['StopLoss']}%")
     print(f"  Leverage:        {result['Leverage']}x")
     print("------------------------------------------------")
