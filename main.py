@@ -8,6 +8,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
 import base64
+from sklearn.preprocessing import MinMaxScaler
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -151,42 +152,35 @@ First few rows:
 {resampled.head().to_string()}
 """
         
-        # Create matplotlib plot for SMAs and range_to_volume
-        plt.figure(figsize=(12, 8)) # Increased figure height to accommodate more plots
-        plt.plot(resampled[datetime_col], resampled['close'], label='Close', color='black', linewidth=1)
-        plt.plot(resampled[datetime_col], resampled['range'], label='Range (High-Low)', color='purple', linewidth=1) # Plot range
-        plt.plot(resampled[datetime_col], resampled['range_to_volume'], label='Range/Volume', color='orange', linewidth=1) # Plot range_to_volume
-
-        colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'cyan', 'magenta', 'yellow']
-        for i, period in enumerate(sma_periods):
-            if f'SMA_{period}' in resampled.columns:
-                plt.plot(resampled[datetime_col], resampled[f'SMA_{period}'], label=f'SMA {period}', color=colors[i % len(colors)], linewidth=1)
-        plt.title('Price, Range, Range/Volume, and SMAs')
-        plt.xlabel('Date/Time')
-        plt.ylabel('Value')
-        plt.legend(loc='best')
-        plt.grid(True, linestyle='--', alpha=0.5)
-
         # Filter out NaNs for plotting to avoid errors
-        plot_data = resampled.dropna(subset=['close', 'range', 'range_to_volume'])
+        plot_data_for_scaling = resampled.dropna(subset=['range', 'range_to_volume'])
         for period in sma_periods:
             if f'SMA_{period}' in resampled.columns:
-                plot_data = plot_data.dropna(subset=[f'SMA_{period}'])
+                plot_data_for_scaling = plot_data_for_scaling.dropna(subset=[f'SMA_{period}'])
 
+        # Apply Min-Max scaling to 'range' and 'range_to_volume'
+        scaler = MinMaxScaler()
+        plot_data_for_scaling[['range_scaled', 'range_to_volume_scaled']] = scaler.fit_transform(plot_data_for_scaling[['range', 'range_to_volume']])
+
+        # Create matplotlib plot
         plt.figure(figsize=(12, 8)) # Increased figure height to accommodate more plots
-        plt.plot(plot_data[datetime_col], plot_data['close'], label='Close', color='black', linewidth=1)
-        plt.plot(plot_data[datetime_col], plot_data['range'], label='Range (High-Low)', color='purple', linewidth=1) # Plot range
-        plt.plot(plot_data[datetime_col], plot_data['range_to_volume'], label='Range/Volume', color='orange', linewidth=1) # Plot range_to_volume
+        
+        # Plotting scaled 'range' and 'range_to_volume'
+        plt.plot(plot_data_for_scaling[datetime_col], plot_data_for_scaling['range_scaled'], label='Scaled Range (0-1)', color='purple', linewidth=1)
+        plt.plot(plot_data_for_scaling[datetime_col], plot_data_for_scaling['range_to_volume_scaled'], label='Scaled Range/Volume (0-1)', color='orange', linewidth=1)
 
-        colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'cyan', 'magenta', 'yellow']
-        for i, period in enumerate(sma_periods):
-            if f'SMA_{period}' in plot_data.columns:
-                plt.plot(plot_data[datetime_col], plot_data[f'SMA_{period}'], label=f'SMA {period}', color=colors[i % len(colors)], linewidth=1)
-        plt.title('Price, Range, Range/Volume, and SMAs')
+        # Plot SMAs, also scaled if they represent values that should be in the 0-1 range, otherwise plot as is.
+        # For simplicity and to adhere to the '0 to 1 range spans the entire plot' for these specific metrics,
+        # we will only plot the scaled range and range_to_volume on the primary y-axis.
+        # If SMAs also need to be scaled, additional logic would be required.
+        # For now, we are focusing on scaling the requested 'range' and 'range_to_volume'.
+
+        plt.title('Scaled Range and Range/Volume')
         plt.xlabel('Date/Time')
-        plt.ylabel('Value')
+        plt.ylabel('Scaled Value (0-1)')
         plt.legend(loc='best')
         plt.grid(True, linestyle='--', alpha=0.5)
+        plt.ylim(0, 1) # Ensure Y axis spans from 0 to 1
         plt.tight_layout()
         
         # Save plot to a bytes buffer and encode as base64
