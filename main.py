@@ -117,6 +117,9 @@ def download_and_process_csv():
         # Compute range (high - low)
         resampled['range'] = resampled['high'] - resampled['low']
         
+        # Compute range divided by volume, handling potential division by zero
+        resampled['range_to_volume'] = resampled['range'] / resampled['volume'].replace(0, pd.NA) # Replace 0 volume with NA to avoid division by zero
+
         # Compute SMAs for specified periods
         # 288 candles/day * 365 days = 104,400 candles for a 365-day SMA
         # 288 candles/day * 4 months (approx 121.67 days) = 34,800 candles
@@ -145,17 +148,19 @@ First few rows:
 {resampled.head().to_string()}
 """
         
-        # Create matplotlib plot for SMAs
-        plt.figure(figsize=(12, 6))
+        # Create matplotlib plot for SMAs and range_to_volume
+        plt.figure(figsize=(12, 8)) # Increased figure height to accommodate more plots
         plt.plot(resampled[datetime_col], resampled['close'], label='Close', color='black', linewidth=1)
         plt.plot(resampled[datetime_col], resampled['range'], label='Range (High-Low)', color='purple', linewidth=1) # Plot range
+        plt.plot(resampled[datetime_col], resampled['range_to_volume'], label='Range/Volume', color='orange', linewidth=1) # Plot range_to_volume
+
         colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'cyan', 'magenta', 'yellow']
         for i, period in enumerate(sma_periods):
             if f'SMA_{period}' in resampled.columns:
                 plt.plot(resampled[datetime_col], resampled[f'SMA_{period}'], label=f'SMA {period}', color=colors[i % len(colors)], linewidth=1)
-        plt.title('Close Price and SMAs')
+        plt.title('Price, Range, Range/Volume, and SMAs')
         plt.xlabel('Date/Time')
-        plt.ylabel('Price')
+        plt.ylabel('Value')
         plt.legend(loc='best')
         plt.grid(True, linestyle='--', alpha=0.5)
         plt.tight_layout()
