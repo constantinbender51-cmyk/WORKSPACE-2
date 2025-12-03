@@ -2,3 +2,4 @@ pandas
 gdown
 flask
 matplotlib
+scikit-learn
