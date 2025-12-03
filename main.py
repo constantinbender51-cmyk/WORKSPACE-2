@@ -96,12 +96,12 @@ def process_data(df):
     # Calculate strategy return
     df['strategy_return'] = 0.0
     
-    # Condition 1: close price > both SMAs
-    cond_above = (df['close'] > df['SMA_120']) & (df['close'] > df['SMA_365'])
+    # Condition 1: open price > both SMAs
+    cond_above = (df['open'] > df['SMA_120']) & (df['open'] > df['SMA_365'])
     df.loc[cond_above, 'strategy_return'] = df.loc[cond_above, 'daily_return_raw']
     
-    # Condition 2: close price < both SMAs
-    cond_below = (df['close'] < df['SMA_120']) & (df['close'] < df['SMA_365'])
+    # Condition 2: open price < both SMAs
+    cond_below = (df['open'] < df['SMA_120']) & (df['open'] < df['SMA_365'])
     df.loc[cond_below, 'strategy_return'] = -df.loc[cond_below, 'daily_return_raw']
     
     # Drop rows with NaN in critical columns after calculations
