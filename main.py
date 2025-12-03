@@ -106,6 +106,12 @@ def process_data(df):
     
     # Drop rows with NaN in critical columns after calculations
     df.dropna(subset=['close', 'SMA_120', 'SMA_365', 'strategy_return'], inplace=True)
+
+    # Calculate compounding returns
+    # The compounding returns start from 1 (representing 100% of initial investment)
+    # and multiply by (1 + daily_return) for each subsequent day.
+    df['compounding_returns'] = (1 + df['strategy_return']).cumprod()
+    
     logging.info("Data processing complete.")
     return df
 
@@ -122,10 +128,11 @@ def create_plot(df, symbol):
     ax1.tick_params(axis='y', labelcolor='blue')
     ax1.grid(True, linestyle='--', alpha=0.6)
 
-    # Create a secondary Y-axis for Strategy Returns
+    # Create a secondary Y-axis for Strategy Returns and Compounding Returns
     ax2 = ax1.twinx()
-    ax2.plot(df.index, df['strategy_return'], label='Strategy Return', color='purple', alpha=0.7, linewidth=0.8)
-    ax2.set_ylabel('Strategy Return', color='purple')
+    ax2.plot(df.index, df['strategy_return'], label='Strategy Daily Return', color='purple', alpha=0.7, linewidth=0.8)
+    ax2.plot(df.index, df['compounding_returns'], label='Strategy Compounding Returns', color='orange', alpha=0.9, linewidth=1.5)
+    ax2.set_ylabel('Returns', color='purple') # Generalize label for both
     ax2.tick_params(axis='y', labelcolor='purple')
     
     # Combine legends
