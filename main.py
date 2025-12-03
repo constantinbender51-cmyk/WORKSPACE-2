@@ -26,6 +26,9 @@ plot_filename = 'sma_plot.png'
 processing_details = None
 plot_image_base64 = None
 
+# Define the processing function first
+
+
 # Perform computation at startup
 try:
     logger.info("Starting data processing at startup...")
