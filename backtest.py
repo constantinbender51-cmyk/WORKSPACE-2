@@ -146,43 +146,55 @@ def create_plots(df, weekly_returns, monthly_returns):
     fig, axes = plt.subplots(4, 1, figsize=(14, 16))
     
     # Plot 1: BTC Price with Position Background Colors
-    axes[0].plot(df.index, df['close'], linewidth=1.5, color='black', label='BTC Price')
+    axes[0].plot(df.index, df['close'], linewidth=1.5, color='black', label='BTC Price', zorder=5)
     axes[0].set_title('BTC/USD Price with Position Colors', fontsize=14, fontweight='bold')
     axes[0].set_ylabel('Price (USD)', fontsize=12)
     axes[0].set_xlabel('Date', fontsize=12)
     axes[0].grid(True, alpha=0.3)
     axes[0].set_yscale('log')
     
-    # Add background colors for positions
-    position_changes = df['position'].diff().fillna(df['position'])
-    current_position = 0
-    start_idx = df.index[0]
+    # Add background colors for positions - find position change points
+    df_plot = df.dropna(subset=['position'])
+    position_starts = []
+    position_ends = []
+    position_values = []
     
-    for idx, pos in zip(df.index, df['position']):
-        if df.loc[idx, 'position'] != current_position or idx == df.index[-1]:
-            if idx != df.index[0]:
-                # Plot the previous position's background
-                if current_position == 1:
-                    axes[0].axvspan(start_idx, idx, alpha=0.2, color='blue', label='Long' if start_idx == df.index[0] else '')
-                elif current_position == -1:
-                    axes[0].axvspan(start_idx, idx, alpha=0.2, color='orange', label='Short' if start_idx == df.index[0] else '')
-                elif current_position == 0:
-                    axes[0].axvspan(start_idx, idx, alpha=0.2, color='grey', label='Cash' if start_idx == df.index[0] else '')
-            
-            start_idx = idx
-            current_position = df.loc[idx, 'position']
+    if len(df_plot) > 0:
+        current_pos = df_plot['position'].iloc[0]
+        start = df_plot.index[0]
+        
+        for i in range(1, len(df_plot)):
+            if df_plot['position'].iloc[i] != current_pos:
+                # Position changed
+                position_starts.append(start)
+                position_ends.append(df_plot.index[i])
+                position_values.append(current_pos)
+                
+                start = df_plot.index[i]
+                current_pos = df_plot['position'].iloc[i]
+        
+        # Add final position
+        position_starts.append(start)
+        position_ends.append(df_plot.index[-1])
+        position_values.append(current_pos)
     
-    # Handle last position
-    if current_position == 1:
-        axes[0].axvspan(start_idx, df.index[-1], alpha=0.2, color='blue')
-    elif current_position == -1:
-        axes[0].axvspan(start_idx, df.index[-1], alpha=0.2, color='orange')
-    elif current_position == 0:
-        axes[0].axvspan(start_idx, df.index[-1], alpha=0.2, color='grey')
+    # Plot position backgrounds
+    legend_added = {'long': False, 'short': False, 'cash': False}
+    for start, end, pos in zip(position_starts, position_ends, position_values):
+        if pos == 1:
+            label = 'Long' if not legend_added['long'] else ''
+            axes[0].axvspan(start, end, alpha=0.15, color='blue', label=label, zorder=1)
+            legend_added['long'] = True
+        elif pos == -1:
+            label = 'Short' if not legend_added['short'] else ''
+            axes[0].axvspan(start, end, alpha=0.15, color='orange', label=label, zorder=1)
+            legend_added['short'] = True
+        elif pos == 0:
+            label = 'Cash' if not legend_added['cash'] else ''
+            axes[0].axvspan(start, end, alpha=0.15, color='grey', label=label, zorder=1)
+            legend_added['cash'] = True
     
-    handles, labels = axes[0].get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    axes[0].legend(by_label.values(), by_label.keys(), loc='upper left')
+    axes[0].legend(loc='upper left')
     
     # Plot 2: Equity Curve
     axes[1].plot(df.index, df['equity'], linewidth=2, color='blue')
@@ -263,12 +275,19 @@ def initialize_data():
         print("="*60)
         print(f"Period: {df.index[0].strftime('%Y-%m-%d')} to {df.index[-1].strftime('%Y-%m-%d')}")
         print(f"Total Days: {len(df)}")
+        print(f"Days with Valid Signals: {df['position'].notna().sum()}")
+        print(f"Long Days: {(df['position'] == 1).sum()}")
+        print(f"Short Days: {(df['position'] == -1).sum()}")
+        print(f"Cash Days: {(df['position'] == 0).sum()}")
+        print(f"Stop Loss Triggered: {df['stop_loss_triggered'].sum()} times")
         print(f"Final Equity: {df['equity'].iloc[-1]:.2f}x")
         print(f"Total Return: {(df['equity'].iloc[-1] - 1) * 100:.2f}%")
         print(f"Sharpe Ratio: {sharpe:.2f}")
         print(f"Max Drawdown: {((df['equity'].cummax() - df['equity']) / df['equity'].cummax()).max() * 100:.2f}%")
-        print(f"Number of Trades: {(df['position'] != 0).sum()}")
-        print(f"Win Rate: {(df[df['position'] != 0]['strategy_return'] > 0).mean() * 100:.2f}%")
+        print(f"Average Daily Return: {df['strategy_return'].mean() * 100:.4f}%")
+        print(f"Winning Days: {(df['strategy_return'] > 0).sum()}")
+        print(f"Losing Days: {(df['strategy_return'] < 0).sum()}")
+        print(f"Win Rate: {(df['strategy_return'] > 0).sum() / (df['strategy_return'] != 0).sum() * 100:.2f}%")
         print("="*60 + "\n")
 
 @app.route('/')
@@ -311,12 +330,18 @@ def stats():
             <h1>BTC/USD Trading Backtest Results</h1>
             <div class="stat"><span class="label">Period:</span> <span class="value">{df.index[0].strftime('%Y-%m-%d')} to {df.index[-1].strftime('%Y-%m-%d')}</span></div>
             <div class="stat"><span class="label">Total Days:</span> <span class="value">{len(df)}</span></div>
+            <div class="stat"><span class="label">Long Days:</span> <span class="value">{(df['position'] == 1).sum()}</span></div>
+            <div class="stat"><span class="label">Short Days:</span> <span class="value">{(df['position'] == -1).sum()}</span></div>
+            <div class="stat"><span class="label">Cash Days:</span> <span class="value">{(df['position'] == 0).sum()}</span></div>
+            <div class="stat"><span class="label">Stop Loss Triggered:</span> <span class="value">{df['stop_loss_triggered'].sum()} times</span></div>
             <div class="stat"><span class="label">Final Equity:</span> <span class="value">{df['equity'].iloc[-1]:.2f}x</span></div>
             <div class="stat"><span class="label">Total Return:</span> <span class="value">{(df['equity'].iloc[-1] - 1) * 100:.2f}%</span></div>
             <div class="stat"><span class="label">Sharpe Ratio:</span> <span class="value">{sharpe:.2f}</span></div>
             <div class="stat"><span class="label">Max Drawdown:</span> <span class="value">{((df['equity'].cummax() - df['equity']) / df['equity'].cummax()).max() * 100:.2f}%</span></div>
-            <div class="stat"><span class="label">Number of Trades:</span> <span class="value">{(df['position'] != 0).sum()}</span></div>
-            <div class="stat"><span class="label">Win Rate:</span> <span class="value">{(df[df['position'] != 0]['strategy_return'] > 0).mean() * 100:.2f}%</span></div>
+            <div class="stat"><span class="label">Average Daily Return:</span> <span class="value">{df['strategy_return'].mean() * 100:.4f}%</span></div>
+            <div class="stat"><span class="label">Winning Days:</span> <span class="value">{(df['strategy_return'] > 0).sum()}</span></div>
+            <div class="stat"><span class="label">Losing Days:</span> <span class="value">{(df['strategy_return'] < 0).sum()}</span></div>
+            <div class="stat"><span class="label">Win Rate:</span> <span class="value">{(df['strategy_return'] > 0).sum() / (df['strategy_return'] != 0).sum() * 100:.2f}%</span></div>
             <a href="/">View Charts</a>
         </div>
     </body>
