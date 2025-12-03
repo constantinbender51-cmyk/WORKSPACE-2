@@ -159,11 +159,12 @@ def create_plots(df, weekly_returns, monthly_returns):
                 verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
     
     # Plot 2: Weekly Returns
-    weekly_returns_plot = weekly_returns.reset_index()
-    weekly_returns_plot['week_start'] = weekly_returns_plot['week'].dt.start_time
+    weekly_returns_df = weekly_returns.reset_index()
+    weekly_returns_df['week_start'] = weekly_returns_df['week'].dt.start_time
+    weekly_returns_df.columns = ['week', 'returns', 'week_start']
     
-    colors = ['green' if x >= 0 else 'red' for x in weekly_returns_plot[0]]
-    axes[1].bar(weekly_returns_plot['week_start'], weekly_returns_plot[0], 
+    colors = ['green' if x >= 0 else 'red' for x in weekly_returns_df['returns']]
+    axes[1].bar(weekly_returns_df['week_start'], weekly_returns_df['returns'], 
                width=5, color=colors, alpha=0.7)
     axes[1].set_title('Weekly Returns', fontsize=14, fontweight='bold')
     axes[1].set_ylabel('Return', fontsize=12)
@@ -172,11 +173,12 @@ def create_plots(df, weekly_returns, monthly_returns):
     axes[1].set_xlabel('Date', fontsize=12)
     
     # Plot 3: Monthly Returns
-    monthly_returns_plot = monthly_returns.reset_index()
-    monthly_returns_plot['month_start'] = monthly_returns_plot['month'].dt.start_time
+    monthly_returns_df = monthly_returns.reset_index()
+    monthly_returns_df['month_start'] = monthly_returns_df['month'].dt.start_time
+    monthly_returns_df.columns = ['month', 'returns', 'month_start']
     
-    colors = ['green' if x >= 0 else 'red' for x in monthly_returns_plot[0]]
-    axes[2].bar(monthly_returns_plot['month_start'], monthly_returns_plot[0], 
+    colors = ['green' if x >= 0 else 'red' for x in monthly_returns_df['returns']]
+    axes[2].bar(monthly_returns_df['month_start'], monthly_returns_df['returns'], 
                width=20, color=colors, alpha=0.7)
     axes[2].set_title('Monthly Returns', fontsize=14, fontweight='bold')
     axes[2].set_ylabel('Return', fontsize=12)
