@@ -18,9 +18,9 @@ RISK_FREE_RATE = 0.0      # Assuming 0% for simple crypto backtesting
 ANNUALIZATION_FACTOR = 365 # Crypto trades 365 days a year
 
 # Grid Search Ranges
-SMA1_RANGE = range(10, 501, 10) 
-SMA2_RANGE = range(10, 181, 10)
-SMA3_RANGE = range(10, 181, 10) # Added 3rd SMA
+SMA1_RANGE = range(10, 501, 5) 
+SMA2_RANGE = range(10, 181, 5)
+SMA3_RANGE = range(10, 181, 5) # Added 3rd SMA
 STOP_LOSS_RANGE = np.arange(0.01, 0.105, 0.005) # 1% to 10% step 0.5%
 LEVERAGE_RANGE = np.arange(1.0, 5.5, 0.5)       # 1x to 5x step 0.5
 
