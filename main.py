@@ -153,29 +153,38 @@ First few rows:
 """
         
         # Filter out NaNs for plotting to avoid errors
-        # We need to consider the 'close' price for plotting as well
-        plot_data = resampled.dropna(subset=['close', 'range', 'range_to_volume'])
-        for period in sma_periods:
-            if f'SMA_{period}' in resampled.columns:
-                plot_data = plot_data.dropna(subset=[f'SMA_{period}'])
-
-        # Apply Min-Max scaling to 'range', 'range_to_volume', and SMAs
-        scaler_range_vol_sma = MinMaxScaler()
-        scaled_metrics = ['range', 'range_to_volume']
-        for period in sma_periods:
-            if f'SMA_{period}' in resampled.columns:
-                scaled_metrics.append(f'SMA_{period}')
+        plot_data_close = resampled.dropna(subset=['close'])
+        plot_data_metrics = resampled.dropna(subset=['range', 'range_to_volume'])
         
-        # Ensure only columns that exist in plot_data are selected for scaling
-        existing_scaled_metrics = [col for col in scaled_metrics if col in plot_data.columns]
-        if existing_scaled_metrics:
-            plot_data[existing_scaled_metrics] = scaler_range_vol_sma.fit_transform(plot_data[existing_scaled_metrics])
+        # Add SMAs to plot_data_metrics, dropping rows where SMA is NaN
+        for period in sma_periods:
+            sma_col = f'SMA_{period}'
+            if sma_col in resampled.columns:
+                plot_data_metrics = plot_data_metrics.dropna(subset=[sma_col])
+                plot_data_metrics[f'{sma_col}_scaled'] = resampled[sma_col] # Store original for potential later use if needed
+            else:
+                plot_data_metrics[f'{sma_col}_scaled'] = pd.NA
 
+        # Apply Min-Max scaling to 'range', 'range_to_volume', and SMAs for the secondary axis
+        scaler_range_vol_sma = MinMaxScaler()
+        metrics_to_scale = ['range', 'range_to_volume']
+        for period in sma_periods:
+            sma_col = f'SMA_{period}'
+            if sma_col in plot_data_metrics.columns and not plot_data_metrics[sma_col].isnull().all(): # Check if column exists and is not all NaNs
+                metrics_to_scale.append(sma_col)
+        
+        # Ensure we only try to scale columns that actually exist in plot_data_metrics
+        existing_metrics_to_scale = [col for col in metrics_to_scale if col in plot_data_metrics.columns]
+        if existing_metrics_to_scale:
+            scaled_values = scaler_range_vol_sma.fit_transform(plot_data_metrics[existing_metrics_to_scale])
+            scaled_df = pd.DataFrame(scaled_values, columns=[f'{col}_scaled' for col in existing_metrics_to_scale], index=plot_data_metrics.index)
+            plot_data_metrics = pd.concat([plot_data_metrics, scaled_df], axis=1)
+        
         # Create matplotlib plot with two y-axes
         fig, ax1 = plt.subplots(figsize=(12, 8))
 
         # Plot 'close' price on the primary y-axis (ax1)
-        ax1.plot(plot_data[datetime_col], plot_data['close'], label='Close Price', color='blue', linewidth=1)
+        ax1.plot(plot_data_close.index, plot_data_close['close'], label='Close Price', color='blue', linewidth=1)
         ax1.set_xlabel('Date/Time')
         ax1.set_ylabel('Close Price', color='blue')
         ax1.tick_params(axis='y', labelcolor='blue')
@@ -184,16 +193,16 @@ First few rows:
         ax2 = ax1.twinx()
         
         # Plot scaled metrics on the secondary y-axis
-        if 'range_scaled' in plot_data.columns:
-            ax2.plot(plot_data[datetime_col], plot_data['range_scaled'], label='Scaled Range (0-1)', color='purple', linewidth=1)
-        if 'range_to_volume_scaled' in plot_data.columns:
-            ax2.plot(plot_data[datetime_col], plot_data['range_to_volume_scaled'], label='Scaled Range/Volume (0-1)', color='orange', linewidth=1)
+        if 'range_scaled' in plot_data_metrics.columns:
+            ax2.plot(plot_data_metrics.index, plot_data_metrics['range_scaled'], label='Scaled Range (0-1)', color='purple', linewidth=1)
+        if 'range_to_volume_scaled' in plot_data_metrics.columns:
+            ax2.plot(plot_data_metrics.index, plot_data_metrics['range_to_volume_scaled'], label='Scaled Range/Volume (0-1)', color='orange', linewidth=1)
         
         # Plot SMAs on the secondary y-axis if they exist and are scaled
         for period in sma_periods:
             sma_col_scaled = f'SMA_{period}_scaled'
-            if sma_col_scaled in plot_data.columns:
-                ax2.plot(plot_data[datetime_col], plot_data[sma_col_scaled], label=f'SMA {period} (0-1)', linewidth=1, linestyle='--')
+            if sma_col_scaled in plot_data_metrics.columns:
+                ax2.plot(plot_data_metrics.index, plot_data_metrics[sma_col_scaled], label=f'SMA {period} (0-1)', linewidth=1, linestyle='--')
 
         ax2.set_ylabel('Scaled Value (0-1)', color='purple') # Using purple for this axis label
         ax2.tick_params(axis='y', labelcolor='purple')
