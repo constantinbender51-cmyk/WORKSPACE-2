@@ -3,6 +3,9 @@ import gdown
 import os
 from flask import Flask, send_file, render_template_string
 import logging
+import plotly.graph_objs as go
+import plotly.utils
+import json
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -22,11 +25,18 @@ HTML_TEMPLATE = """
 <html>
 <head>
     <title>Processed CSV Download</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 <body>
     <h1>Processed CSV Data</h1>
-    <p>The CSV has been downloaded, processed, and resampled to 5-minute intervals with range computed.</p>
+    <p>The CSV has been downloaded, processed, and resampled to 5-minute intervals with range and SMAs computed.</p>
     <p><a href="/download">Download Processed CSV</a></p>
+    <h2>SMA Plot:</h2>
+    <div id="plot"></div>
+    <script>
+        var plotData = {{ plot_json|safe }};
+        Plotly.newPlot('plot', plotData.data, plotData.layout);
+    </script>
     <h2>Processing Details:</h2>
     <pre>{{ details }}</pre>
 </body>
@@ -100,6 +110,14 @@ def download_and_process_csv():
         # Compute range (high - low)
         resampled['range'] = resampled['high'] - resampled['low']
         
+        # Compute SMAs for specified periods
+        sma_periods = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
+        for period in sma_periods:
+            if len(resampled) >= period:
+                resampled[f'SMA_{period}'] = resampled['close'].rolling(window=period, min_periods=1).mean()
+            else:
+                resampled[f'SMA_{period}'] = None  # Handle cases with insufficient data
+        
         # Reset index to make datetime a column
         resampled.reset_index(inplace=True)
         
@@ -117,7 +135,23 @@ Columns in processed data: {list(resampled.columns)}
 First few rows:
 {resampled.head().to_string()}
 """
-        return details
+        
+        # Create Plotly figure for SMAs
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=resampled[datetime_col], y=resampled['close'], mode='lines', name='Close', line=dict(color='black', width=1)))
+        colors = ['red', 'blue', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'cyan', 'magenta', 'yellow']
+        for i, period in enumerate(sma_periods):
+            if f'SMA_{period}' in resampled.columns:
+                fig.add_trace(go.Scatter(x=resampled[datetime_col], y=resampled[f'SMA_{period}'], mode='lines', name=f'SMA {period}', line=dict(color=colors[i % len(colors)], width=1)))
+        fig.update_layout(
+            title='Close Price and SMAs',
+            xaxis_title='Date/Time',
+            yaxis_title='Price',
+            hovermode='x unified'
+        )
+        plot_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+        
+        return details, plot_json
     
     except Exception as e:
         logger.error(f"Error in processing: {e}")
@@ -126,10 +160,10 @@ First few rows:
 
 @app.route('/')
 def index():
-    """Main page with download link and processing details."""
+    """Main page with download link, SMA plot, and processing details."""
     try:
-        details = download_and_process_csv()
-        return render_template_string(HTML_TEMPLATE, details=details)
+        details, plot_json = download_and_process_csv()
+        return render_template_string(HTML_TEMPLATE, details=details, plot_json=plot_json)
     except Exception as e:
         return f"<h1>Error</h1><p>{e}</p>", 500
 
