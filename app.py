@@ -176,7 +176,7 @@ def index():
     fig = plt.figure(figsize=(14, 10))
     gs = fig.add_gridspec(2, 2)
     
-    # Plot A: Equity Curve
+    # Plot A: Equity Curve with Price and SMA on Secondary Axis
     ax1 = fig.add_subplot(gs[0, :])
     dates = df.index
     
@@ -186,12 +186,30 @@ def index():
     # Strategy Curve (Intraday Compounded)
     strat_cum = np.exp(np.pad(best_curve, (0,0))) 
     
+    # Plot equity curves on left axis
     ax1.plot(dates, market_cum, label="Buy & Hold (Standard)", color='gray', alpha=0.5)
     ax1.plot(dates, strat_cum, label=f"Intraday Strategy (SMA {best_sma}, x={best_x:.1%})", color='purple')
-    ax1.set_title(f"Equity Curve: Intraday (Open -> Close) Compounding")
+    ax1.set_title(f"Equity Curve with Price and SMA (SMA {best_sma})")
     ax1.set_yscale('linear')
-    ax1.legend()
+    ax1.set_ylabel('Equity (Log Scale)', color='black')
+    ax1.legend(loc='upper left')
     ax1.grid(True, alpha=0.3)
+    
+    # Create secondary axis for price and SMA
+    ax1_right = ax1.twinx()
+    
+    # Calculate SMA for the best period
+    sma_series = df['close'].rolling(window=best_sma).mean()
+    
+    # Plot price and SMA on right axis
+    ax1_right.plot(dates, df['close'], label='BTC Price', color='blue', alpha=0.3, linewidth=0.8)
+    ax1_right.plot(dates, sma_series, label=f'SMA {best_sma}', color='red', alpha=0.7, linewidth=1.2)
+    ax1_right.set_ylabel('Price (USD)', color='black')
+    
+    # Combine legends from both axes
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax1_right.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left', bbox_to_anchor=(0, 1), bbox_transform=ax1.transAxes)
     
     # Plot B: Heatmap
     ax2 = fig.add_subplot(gs[1, :])
