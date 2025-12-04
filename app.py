@@ -250,6 +250,13 @@ def index():
     
     best_sma1, best_sma2, best_x, best_s = best_params
     
+    # Compute average return over 4 months (approx 120 trading days)
+    # Apply 3x leverage to strategy returns
+    leveraged_curve = best_curve * 3
+    # Get the last 4 months of data (approx 120 trading days)
+    last_4_months_returns = leveraged_curve[-120:] if len(leveraged_curve) >= 120 else leveraged_curve
+    avg_return_4months = np.mean(last_4_months_returns) if len(last_4_months_returns) > 0 else 0
+    
     # Create the plot
     fig = plt.figure(figsize=(14, 10))
     gs = fig.add_gridspec(2, 2)
@@ -258,12 +265,10 @@ def index():
     ax1 = fig.add_subplot(gs[0, :])
     dates = df.index
     market_cum = np.exp(np.cumsum(benchmark_ret))
-    # Apply 2x leverage to strategy returns
-    leveraged_curve = best_curve * 2
     strat_cum = np.exp(np.pad(leveraged_curve, (0,0))) 
     
     ax1.plot(dates, market_cum, label="Buy & Hold", color='gray', alpha=0.5)
-    ax1.plot(dates, strat_cum, label=f"Strategy (SMA{best_sma1} & SMA{best_sma2}) with 2x Leverage", color='darkorange')
+    ax1.plot(dates, strat_cum, label=f"Strategy (SMA{best_sma1} & SMA{best_sma2}) with 3x Leverage", color='darkorange')
     ax1.set_title(f"Equity Curve: Dual SMA + Band Latch (Log Scale)")
     ax1.set_yscale('log')
     ax1.legend()
@@ -300,6 +305,7 @@ def index():
         'best_x': best_x,
         'best_s': best_s,
         'best_sharpe': best_sharpe,
+        'avg_return_4months': avg_return_4months,
         'plot_url': plot_url
     }
     
