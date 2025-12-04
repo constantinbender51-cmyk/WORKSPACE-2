@@ -271,7 +271,6 @@ if __name__ == "__main__":
     print(f"Best Sharpe Ratio: {best_sharpe:.4f}")
     
     # Store results globally
-    global results_data
     results_data = (df, best_params, best_sharpe, best_curve, market_ret, heatmap_data, smas, xs)
     
     print("\nTest complete. Starting web server on port 8080...")
