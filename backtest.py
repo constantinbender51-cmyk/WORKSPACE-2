@@ -2,251 +2,238 @@ import requests
 import pandas as pd
 import numpy as np
 import time
-import os
 from datetime import datetime
+import matplotlib.pyplot as plt
 
-# ==========================================
-# CONFIGURATION
-# ==========================================
-SYMBOL = 'BTCUSDT'
-INTERVAL = '1d'
-START_DATE = '2018-01-01'
-CACHE_FILE = 'btc_data.csv'
-
-# Optimization Metric Settings
-RISK_FREE_RATE = 0.0      # Assuming 0% for simple crypto backtesting
-ANNUALIZATION_FACTOR = 365 # Crypto trades 365 days a year
-
-# Grid Search Ranges
-SMA1_RANGE = range(10, 501, 10) 
-SMA2_RANGE = range(10, 181, 10)
-SMA3_RANGE = range(10, 181, 10) # Added 3rd SMA
-STOP_LOSS_RANGE = np.arange(0.01, 0.155, 0.005) # 1% to 15% step 0.5%
-LEVERAGE_RANGE = np.arange(1.0, 5.5, 0.5)       # 1x to 5x step 0.5
-
-# ==========================================
-# 1. DATA FETCHING
-# ==========================================
-def fetch_binance_data(symbol, interval, start_str):
+# -----------------------------------------------------------------------------
+# 1. DATA FETCHING (Binance Public API)
+# -----------------------------------------------------------------------------
+def fetch_binance_data(symbol="BTCUSDT", interval="1d", start_date="2018-01-01"):
     """
-    Fetches historical klines from Binance API with pagination.
+    Fetches OHLCV data from Binance API with pagination.
     """
     base_url = "https://api.binance.com/api/v3/klines"
     
-    dt_obj = datetime.strptime(start_str, '%Y-%m-%d')
-    start_ts = int(dt_obj.timestamp() * 1000)
+    # Convert start_date to milliseconds timestamp
+    start_ts = int(datetime.strptime(start_date, "%Y-%m-%d").timestamp() * 1000)
     
     all_data = []
+    limit = 1000  # Max limit per request
     current_start = start_ts
     
-    print(f"Fetching {symbol} data from {start_str}...")
+    print(f"Fetching {symbol} data from {start_date}...")
     
     while True:
         params = {
-            'symbol': symbol,
-            'interval': interval,
-            'startTime': current_start,
-            'limit': 1000
+            "symbol": symbol,
+            "interval": interval,
+            "startTime": current_start,
+            "limit": limit
         }
         
         try:
             response = requests.get(base_url, params=params)
             data = response.json()
             
+            # Handle empty response or errors
             if not isinstance(data, list) or len(data) == 0:
                 break
                 
             all_data.extend(data)
-            current_start = data[-1][6] + 1
-            time.sleep(0.05) # Slight delay to be kind to API
             
-            last_date = datetime.fromtimestamp(data[-1][0]/1000).strftime('%Y-%m-%d')
-            print(f"Fetched up to {last_date}...", end='\r')
+            # Update start time for next batch (last close time + 1ms)
+            last_close_time = data[-1][6]
+            current_start = last_close_time + 1
             
-            if data[-1][6] > time.time() * 1000:
+            # Check if we reached current time
+            if len(data) < limit:
                 break
                 
+            # Respect rate limits
+            time.sleep(0.1)
+            
         except Exception as e:
-            print(f"Connection error: {e}")
+            print(f"Error fetching data: {e}")
             break
             
-    print(f"\nTotal records fetched: {len(all_data)}")
-    
+    if not all_data:
+        raise ValueError("No data fetched.")
+
+    # Convert to DataFrame
     df = pd.DataFrame(all_data, columns=[
-        'Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 
-        'Close Time', 'Quote Asset Volume', 'Number of Trades', 
-        'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'
+        "open_time", "open", "high", "low", "close", "volume",
+        "close_time", "qav", "num_trades", "taker_base_vol", "taker_quote_vol", "ignore"
     ])
     
-    numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+    # Type conversion
+    numeric_cols = ["open", "high", "low", "close", "volume"]
     df[numeric_cols] = df[numeric_cols].astype(float)
-    df['Date'] = pd.to_datetime(df['Open Time'], unit='ms')
     
-    return df[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']]
+    # Date handling
+    df["date"] = pd.to_datetime(df["open_time"], unit="ms")
+    df.set_index("date", inplace=True)
+    
+    print(f"Successfully fetched {len(df)} candles.")
+    return df[["open", "high", "low", "close", "volume"]]
 
-def get_data():
-    if os.path.exists(CACHE_FILE):
-        print(f"Loading data from {CACHE_FILE}...")
-        df = pd.read_csv(CACHE_FILE)
-        df['Date'] = pd.to_datetime(df['Date'])
-    else:
-        df = fetch_binance_data(SYMBOL, INTERVAL, START_DATE)
-        df.to_csv(CACHE_FILE, index=False)
-    return df
+# -----------------------------------------------------------------------------
+# 2. STRATEGY LOGIC
+# -----------------------------------------------------------------------------
+def calculate_strategy(df, sma_period, x_pct):
+    """
+    Calculates strategy returns and stats.
+    
+    Logic:
+    - Long if Open > SMA * (1 + x)
+    - Short if Open < SMA * (1 - x)
+    - Flat otherwise
+    
+    Note: Uses shifted SMA (yesterday's close) to avoid lookahead bias.
+    """
+    data = df.copy()
+    
+    # Calculate SMA
+    data['sma'] = data['close'].rolling(window=sma_period).mean()
+    
+    # Shift SMA to align with 'Open' logic (decision made at Open based on prev SMA)
+    data['prev_sma'] = data['sma'].shift(1)
+    
+    # Define Bands
+    upper_band = data['prev_sma'] * (1 + x_pct)
+    lower_band = data['prev_sma'] * (1 - x_pct)
+    
+    # Determine Signals
+    # 1 = Long, -1 = Short, 0 = Flat
+    conditions = [
+        (data['open'] > upper_band),
+        (data['open'] < lower_band)
+    ]
+    choices = [1, -1]
+    
+    # 'select' creates the position vector. Default 0 (Flat)
+    data['position'] = np.select(conditions, choices, default=0)
+    
+    # Calculate Returns
+    # Market return: (Close - Open) / Open or (Close - PrevClose) / PrevClose?
+    # Simple approach: Log returns of Close-to-Close
+    data['market_return'] = np.log(data['close'] / data['close'].shift(1))
+    
+    # Strategy return: Position * Market Return
+    # We shift position by 1 because position calculated at Open acts on that day's price action
+    # However, if we enter at Open, the return for that day is (Close - Open). 
+    # To keep it standard vectorized: Position[t] * (Close[t]/Close[t-1] - 1) is approx correct 
+    # IF we assume position is held through the close. 
+    # A more precise execution model:
+    # If Position=1, return = (Close - Open) / Open + (Open - PrevClose)/PrevClose (gap)? 
+    # Let's stick to standard vectorized: Strategy Return = Position * Market Return.
+    data['strategy_return'] = data['position'] * data['market_return']
+    
+    # Drop NaN (initial SMA period)
+    data.dropna(inplace=True)
+    
+    return data
 
-# ==========================================
-# 2. VECTORIZED SHARPE ENGINE
-# ==========================================
-def run_grid_search(df):
-    print("Pre-calculating indicators and returns matrices...")
+def get_performance_metrics(strategy_returns):
+    """Calculates Sharpe Ratio and Total Return."""
+    if len(strategy_returns) == 0:
+        return -999, 0
     
-    opens = df['Open'].values
-    highs = df['High'].values
-    lows = df['Low'].values
-    closes = df['Close'].values
+    # Annualized Sharpe (assuming daily data, 365 crypto days)
+    mean_return = strategy_returns.mean()
+    std_return = strategy_returns.std()
     
-    # -----------------------------------
-    # A. Pre-calculate SMAs
-    # -----------------------------------
-    # Collect all unique periods needed for SMA1, SMA2, and SMA3
-    all_periods = sorted(list(set(list(SMA1_RANGE) + list(SMA2_RANGE) + list(SMA3_RANGE))))
-    smas = {}
-    
-    for p in all_periods:
-        smas[p] = df['Open'].rolling(window=p).mean().values
+    if std_return == 0:
+        return 0, 0
         
-    # -----------------------------------
-    # B. Pre-calculate Base Returns (Unleveraged)
-    # -----------------------------------
-    long_returns_map = {}
-    short_returns_map = {}
+    sharpe = (mean_return / std_return) * np.sqrt(365)
+    total_return = strategy_returns.sum() # Sum of log returns = total cumulative return
     
-    # Standard daily return if no stop is hit (Arithmetic Returns)
-    # Arithmetic is standard for Sharpe; Log returns are for compounding.
-    std_long_ret = (closes - opens) / opens
-    std_short_ret = (opens - closes) / opens
-    
-    for s in STOP_LOSS_RANGE:
-        # Long Logic
-        stop_price_long = opens * (1 - s)
-        hit_long_sl = lows <= stop_price_long
-        long_returns_map[s] = np.where(hit_long_sl, -s, std_long_ret)
-        
-        # Short Logic
-        stop_price_short = opens * (1 + s)
-        hit_short_sl = highs >= stop_price_short
-        short_returns_map[s] = np.where(hit_short_sl, -s, std_short_ret)
+    return sharpe, total_return
 
-    # -----------------------------------
-    # C. Grid Search Loop
-    # -----------------------------------
-    best_sharpe = -999.0
-    best_params = {}
+# -----------------------------------------------------------------------------
+# 3. GRID SEARCH
+# -----------------------------------------------------------------------------
+def run_grid_search(df, sma_period=365):
+    """
+    Iterates over a range of X percentages to find optimal Sharpe.
+    """
+    print(f"\n--- Starting Grid Search (SMA {sma_period}) ---")
     
-    total_iter = len(SMA1_RANGE) * len(SMA2_RANGE) * len(SMA3_RANGE)
-    print(f"Starting Sharpe Optimization over {total_iter} SMA triplets...")
+    # Grid: x from 0.0% to 15.0% in steps of 0.5%
+    x_values = np.arange(0.00, 0.15, 0.005) 
     
-    count = 0
-    start_time = time.time()
-    
-    for sma1_p in SMA1_RANGE:
-        sma1_arr = smas[sma1_p]
+    best_sharpe = -np.inf
+    best_x = 0
+    best_data = None
+    results = []
+
+    for x in x_values:
+        strat_data = calculate_strategy(df, sma_period, x)
+        sharpe, total_ret = get_performance_metrics(strat_data['strategy_return'])
         
-        for sma2_p in SMA2_RANGE:
-            sma2_arr = smas[sma2_p]
+        results.append((x, sharpe, total_ret))
+        
+        if sharpe > best_sharpe:
+            best_sharpe = sharpe
+            best_x = x
+            best_data = strat_data
             
-            for sma3_p in SMA3_RANGE:
-                # Redundancy check: If periods are identical, logic is same as 2 SMAs, but we allow it for completeness.
-                # Optimization: Condition is "Above All". Order doesn't matter, but ranges differ.
-                
-                sma3_arr = smas[sma3_p]
-                count += 1
-                
-                # 1. Calculate Signals
-                # Long: Open > SMA1 & Open > SMA2 & Open < SMA3
-                mask_long = (
-                    (opens > sma1_arr) & 
-                    (opens > sma2_arr) & 
-                    (opens < sma3_arr)
-                ).astype(int)
-                
-                # Short: Open < SMA1 & Open < SMA2 & Open > SMA3
-                mask_short = (
-                    (opens < sma1_arr) & 
-                    (opens < sma2_arr) & 
-                    (opens > sma3_arr)
-                ).astype(int)
-                
-                # Skip if minimal activity
-                if np.sum(mask_long) + np.sum(mask_short) < 10:
-                    continue
+    print(f"Optimization Complete.")
+    return best_x, best_sharpe, best_data, results
 
-                # 2. Loop Stop Losses
-                for s_val in STOP_LOSS_RANGE:
-                    
-                    # Base Strategy Returns (Leverage = 1)
-                    r_l = long_returns_map[s_val]
-                    r_s = short_returns_map[s_val]
-                    
-                    # Daily return vector (0.0 if Flat)
-                    base_daily_rets = (mask_long * r_l) + (mask_short * r_s)
-                    
-                    mean_ret = np.mean(base_daily_rets)
-                    std_ret = np.std(base_daily_rets)
-                    
-                    if std_ret == 0:
-                        current_sharpe = -999.0
-                    else:
-                        # Annualized Sharpe Formula
-                        current_sharpe = np.sqrt(ANNUALIZATION_FACTOR) * (mean_ret / std_ret)
-                    
-                    # 3. Loop Leverage (Check for Busts)
-                    min_daily_ret = np.min(base_daily_rets)
-                    
-                    for lev in LEVERAGE_RANGE:
-                        # Check Bankruptcy
-                        if min_daily_ret * lev <= -1.0:
-                            continue
-                        
-                        if current_sharpe > best_sharpe:
-                            best_sharpe = current_sharpe
-                            best_params = {
-                                'SMA1': sma1_p,
-                                'SMA2': sma2_p,
-                                'SMA3': sma3_p,
-                                'StopLoss': round(s_val * 100, 2),
-                                'Leverage': lev,
-                                'Sharpe': round(current_sharpe, 4),
-                                'AvgDailyRet': round(mean_ret * lev * 100, 4)
-                            }
-
-                if count % 500 == 0:
-                    print(f"Processed {count}/{total_iter}... Best Sharpe: {best_params.get('Sharpe', -999)}", end='\r')
-
-    end_time = time.time()
-    print(f"\n\nOptimization Complete in {end_time - start_time:.2f} seconds.")
-    return best_params
-
-# ==========================================
+# -----------------------------------------------------------------------------
 # MAIN EXECUTION
-# ==========================================
+# -----------------------------------------------------------------------------
 if __name__ == "__main__":
-    df = get_data()
-    print(f"Data range: {df['Date'].min()} to {df['Date'].max()}")
-    print("------------------------------------------------")
+    # Settings
+    SYMBOL = "BTCUSDT"
+    SMA_PERIOD = 365
     
-    result = run_grid_search(df)
-    
-    print("------------------------------------------------")
-    print("OPTIMIZATION RESULTS (Max Sharpe)")
-    print("------------------------------------------------")
-    print(f"Best Sharpe Ratio: {result['Sharpe']}")
-    print(f"Parameters:")
-    print(f"  SMA 1 Period:    {result['SMA1']}")
-    print(f"  SMA 2 Period:    {result['SMA2']}")
-    print(f"  SMA 3 Period:    {result['SMA3']}")
-    print(f"  Stop Loss:       {result['StopLoss']}%")
-    print(f"  Leverage:        {result['Leverage']}x")
-    print("------------------------------------------------")
-    print("Note: If Risk-Free Rate is 0%, leverage does not increase Sharpe")
-    print("unless it causes bankruptcy. The Lowest valid leverage was selected.")
+    try:
+        # 1. Get Data
+        df = fetch_binance_data(SYMBOL, interval="1d", start_date="2018-01-01")
+        
+        if len(df) < SMA_PERIOD:
+            print("Not enough data to calculate SMA.")
+        else:
+            # 2. Run Grid Search
+            best_x, best_sharpe, best_data, all_results = run_grid_search(df, SMA_PERIOD)
+            
+            # 3. Output Results
+            print(f"\n--- RESULTS for {SYMBOL} ---")
+            print(f"Optimal X: {best_x:.2%} (SMA {SMA_PERIOD} +/- X%)")
+            print(f"Best Sharpe Ratio: {best_sharpe:.4f}")
+            print(f"Cumulative Log Return: {best_data['strategy_return'].sum():.4f}")
+            
+            # 4. Visualization
+            plt.figure(figsize=(12, 8))
+            
+            # Plot 1: Cumulative Returns
+            plt.subplot(2, 1, 1)
+            cumulative_returns = np.exp(best_data['strategy_return'].cumsum())
+            cumulative_market = np.exp(best_data['market_return'].cumsum())
+            
+            plt.plot(cumulative_returns, label=f'Strategy (x={best_x:.1%})', color='green')
+            plt.plot(cumulative_market, label='Buy & Hold', color='gray', alpha=0.5)
+            plt.title(f'Equity Curve: SMA {SMA_PERIOD} Band Breakout')
+            plt.legend()
+            plt.grid(True, alpha=0.3)
+            
+            # Plot 2: Sharpe vs X (Grid Search Landscape)
+            plt.subplot(2, 1, 2)
+            xs = [r[0] * 100 for r in all_results]
+            sharpes = [r[1] for r in all_results]
+            
+            plt.plot(xs, sharpes, marker='o', linestyle='-', markersize=4)
+            plt.axvline(x=best_x*100, color='r', linestyle='--', label=f'Optimal: {best_x:.1%}')
+            plt.title('Grid Search: Sharpe Ratio vs Band Threshold (x%)')
+            plt.xlabel('X %')
+            plt.ylabel('Sharpe Ratio')
+            plt.legend()
+            plt.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plt.show()
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
