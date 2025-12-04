@@ -6,6 +6,9 @@ import sys
 from datetime import datetime
 import matplotlib.pyplot as plt
 from numba import jit
+import io
+import base64
+from flask import Flask, render_template
 
 # -----------------------------------------------------------------------------
 # 1. DATA FETCHING
@@ -230,31 +233,24 @@ def run_dual_sma_grid(df):
     return best_params, best_sharpe, best_curve, benchmark_returns, results_matrix, sma1_periods, sma2_periods
 
 # -----------------------------------------------------------------------------
-# MAIN
+# 4. WEB SERVER
 # -----------------------------------------------------------------------------
-if __name__ == "__main__":
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    # Run the grid search
     SYMBOL = "BTCUSDT"
-    
-    # 1. Fetch
     df = fetch_binance_data(SYMBOL)
     
-    # 2. Run
     best_params, best_sharpe, best_curve, benchmark_ret, heatmap_data, smas1, smas2 = run_dual_sma_grid(df)
     
     if best_params is None:
-        print("No valid parameters found.")
-        sys.exit(1)
+        return "No valid parameters found.", 500
     
     best_sma1, best_sma2, best_x, best_s = best_params
     
-    print(f"\n--- RESULTS (Dual SMA) ---")
-    print(f"Best SMA 1 (Logic) : {best_sma1}")
-    print(f"Best SMA 2 (Filter): {best_sma2}")
-    print(f"Best Band Width X  : {best_x:.1%}")
-    print(f"Best Stop Loss S   : {best_s:.1%}")
-    print(f"Best Sharpe Ratio  : {best_sharpe:.4f}")
-    
-    # 3. Visualization
+    # Create the plot
     fig = plt.figure(figsize=(14, 10))
     gs = fig.add_gridspec(2, 2)
     
@@ -286,4 +282,31 @@ if __name__ == "__main__":
     ax2.legend()
     
     plt.tight_layout()
-    plt.show()
+    
+    # Convert plot to base64 for HTML
+    img = io.BytesIO()
+    plt.savefig(img, format='png', dpi=100)
+    img.seek(0)
+    plot_url = base64.b64encode(img.getvalue()).decode('utf8')
+    plt.close(fig)
+    
+    # Prepare data for template
+    data = {
+        'symbol': SYMBOL,
+        'best_sma1': best_sma1,
+        'best_sma2': best_sma2,
+        'best_x': best_x,
+        'best_s': best_s,
+        'best_sharpe': best_sharpe,
+        'plot_url': plot_url
+    }
+    
+    return render_template('index.html', data=data)
+
+# -----------------------------------------------------------------------------
+# MAIN
+# -----------------------------------------------------------------------------
+if __name__ == "__main__":
+    print("Starting web server on port 8080...")
+    print("Open http://localhost:8080 in your browser")
+    app.run(host='0.0.0.0', port=8080, debug=False)
