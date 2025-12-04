@@ -92,7 +92,7 @@
             <div class="result-item">Best Threshold X: <span class="result-value">{{ "%.1f"|format(data.best_x * 100) }}%</span></div>
             <div class="result-item">Best Stop Loss S: <span class="result-value">{{ "%.1f"|format(data.best_s * 100) }}%</span></div>
             <div class="result-item">Best Sharpe Ratio: <span class="result-value">{{ "%.4f"|format(data.best_sharpe) }}</span></div>
-            <div class="result-item">Average Return (Last 4 Months, 3x Leverage): <span class="result-value">{{ "%.4f"|format(data.avg_return_4months) }}</span></div>
+            <div class="result-item">Rolling Average Return (3x Leverage): <span class="result-value">{{ "%.4f"|format(data.avg_return_4months) }}</span></div>
         </div>
         
         <div class="plot-container">
