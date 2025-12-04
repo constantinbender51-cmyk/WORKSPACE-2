@@ -240,6 +240,10 @@ if __name__ == "__main__":
     # 2. Run
     best_params, best_sharpe, best_curve, benchmark_ret, heatmap_data, smas1, smas2 = run_dual_sma_grid(df)
     
+    if best_params is None:
+        print("No valid parameters found.")
+        return
+    
     best_sma1, best_sma2, best_x, best_s = best_params
     
     print(f"\n--- RESULTS (Dual SMA) ---")
@@ -270,7 +274,7 @@ if __name__ == "__main__":
     ax2 = fig.add_subplot(gs[1, :])
     X, Y = np.meshgrid(smas2, smas1)
     
-    c = ax2.pcolormesh(X, Y, results_matrix, shading='auto', cmap='magma')
+    c = ax2.pcolormesh(X, Y, heatmap_data, shading='auto', cmap='magma')
     fig.colorbar(c, ax=ax2, label='Best Sharpe (across X & S)')
     
     ax2.plot(best_sma2, best_sma1, 'g*', markersize=15, markeredgecolor='white', label='Optimal')
