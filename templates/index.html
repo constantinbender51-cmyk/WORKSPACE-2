@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMA Grid Search Results</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .results-box {
+            background-color: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .results-box h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .result-item {
+            margin: 8px 0;
+            font-size: 16px;
+        }
+        .result-value {
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .plot-container {
+            margin: 30px 0;
+            text-align: center;
+        }
+        .plot-container img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 5px;
+            background-color: white;
+        }
+        .info-box {
+            background-color: #e8f4fc;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .refresh-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        .refresh-btn:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SMA Grid Search Optimization Results</h1>
+        
+        <div class="info-box">
+            <h2>About This Analysis</h2>
+            <p>This tool performs a grid search optimization for a Single SMA Breakout strategy with Stop Loss on {{ data.symbol }} data.</p>
+            <p>It optimizes three parameters: SMA Period (1-365), Entry Threshold X (-5% to +5%), and Stop Loss S (1% to 10%).</p>
+        </div>
+        
+        <div class="results-box">
+            <h2>Optimization Results</h2>
+            <div class="result-item">Symbol: <span class="result-value">{{ data.symbol }}</span></div>
+            <div class="result-item">Best SMA Period: <span class="result-value">{{ data.best_sma }}</span></div>
+            <div class="result-item">Best Threshold X: <span class="result-value">{{ "%.1f"|format(data.best_x * 100) }}%</span></div>
+            <div class="result-item">Best Stop Loss S: <span class="result-value">{{ "%.1f"|format(data.best_s * 100) }}%</span></div>
+            <div class="result-item">Best Sharpe Ratio: <span class="result-value">{{ "%.4f"|format(data.best_sharpe) }}</span></div>
+        </div>
+        
+        <div class="plot-container">
+            <h2>Visualization</h2>
+            <img src="data:image/png;base64,{{ data.plot_url }}" alt="SMA Grid Search Results Plot">
+            <p><em>Top: Equity curve comparison. Bottom: Sharpe ratio heatmap showing optimal parameters.</em></p>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <button class="refresh-btn" onclick="location.reload()">Refresh Analysis</button>
+            <p style="margin-top: 10px; color: #666; font-size: 14px;">Note: Refreshing will re-run the optimization with fresh data</p>
+        </div>
+    </div>
+</body>
+</html>
