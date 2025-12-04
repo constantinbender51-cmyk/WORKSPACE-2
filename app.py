@@ -4,6 +4,9 @@ import numpy as np
 import time
 from datetime import datetime
 import matplotlib.pyplot as plt
+import io
+import base64
+from flask import Flask, render_template
 
 # -----------------------------------------------------------------------------
 # 1. DATA FETCHING
@@ -147,16 +150,18 @@ def run_single_sma_grid(df):
     return best_params, best_sharpe, best_curve, benchmark_returns, results_matrix, sma_periods, x_values
 
 # -----------------------------------------------------------------------------
-# MAIN
+# 3. WEB SERVER
 # -----------------------------------------------------------------------------
-if __name__ == "__main__":
+app = Flask(__name__)
+
+@app.route('/')
+def index():
     SYMBOL = "BTCUSDT"
     
-    # 1. Fetch
+    # 1. Fetch data
     df = fetch_binance_data(SYMBOL)
     
     # 2. Run Grid Search
-    # Returns extended to include benchmark_returns
     best_params, best_sharpe, best_curve, benchmark_ret, heatmap_data, smas, xs = run_single_sma_grid(df)
     
     best_sma, best_x, best_s = best_params
@@ -167,7 +172,7 @@ if __name__ == "__main__":
     print(f"Best Stop Loss S: {best_s:.1%}")
     print(f"Best Sharpe Ratio: {best_sharpe:.4f}")
     
-    # 3. Visualization
+    # 3. Create visualization
     fig = plt.figure(figsize=(14, 10))
     gs = fig.add_gridspec(2, 2)
     
@@ -202,4 +207,30 @@ if __name__ == "__main__":
     ax2.legend()
     
     plt.tight_layout()
-    plt.show()
+    
+    # Convert plot to base64 for HTML display
+    img = io.BytesIO()
+    plt.savefig(img, format='png', bbox_inches='tight')
+    img.seek(0)
+    plot_url = base64.b64encode(img.getvalue()).decode('utf8')
+    plt.close(fig)
+    
+    # Prepare data for template
+    data = {
+        'symbol': SYMBOL,
+        'best_sma': best_sma,
+        'best_x': best_x,
+        'best_s': best_s,
+        'best_sharpe': best_sharpe,
+        'plot_url': plot_url
+    }
+    
+    return render_template('index.html', data=data)
+
+# -----------------------------------------------------------------------------
+# MAIN
+# -----------------------------------------------------------------------------
+if __name__ == "__main__":
+    print("Starting web server on port 8080...")
+    print("Open http://localhost:8080 in your browser to view results")
+    app.run(host='0.0.0.0', port=8080, debug=False)
