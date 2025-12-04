@@ -4,6 +4,9 @@ import numpy as np
 import time
 from datetime import datetime
 import matplotlib.pyplot as plt
+from flask import Flask, render_template_string
+import io
+import base64
 
 # -----------------------------------------------------------------------------
 # 1. DATA FETCHING
@@ -137,25 +140,12 @@ def run_single_sma_grid(df):
 # -----------------------------------------------------------------------------
 # MAIN
 # -----------------------------------------------------------------------------
-if __name__ == "__main__":
-    SYMBOL = "BTCUSDT"
-    
-    # 1. Fetch
-    df = fetch_binance_data(SYMBOL)
-    
-    # 2. Run Grid Search
-    best_params, best_sharpe, best_curve, market_ret, heatmap_data, smas, xs = run_single_sma_grid(df)
-    
-    best_sma, best_x = best_params
-    
-    print(f"\n--- RESULTS ---")
-    print(f"Best SMA Period: {best_sma}")
-    print(f"Best Threshold X: {best_x:.1%}")
-    print(f"Best Sharpe Ratio: {best_sharpe:.4f}")
-    
-    # 3. Visualization
+def create_plot(df, best_params, best_sharpe, best_curve, market_ret, heatmap_data, smas, xs):
+    """Create and return a base64 encoded plot image."""
     fig = plt.figure(figsize=(14, 10))
     gs = fig.add_gridspec(2, 2)
+    
+    best_sma, best_x = best_params
     
     # Plot A: Equity Curve
     ax1 = fig.add_subplot(gs[0, :])
@@ -189,4 +179,103 @@ if __name__ == "__main__":
     ax2.legend()
     
     plt.tight_layout()
-    plt.show()
+    
+    # Convert plot to base64 string
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    plt.close(fig)
+    
+    return img_base64
+
+# Create Flask app
+app = Flask(__name__)
+
+# Global variables to store results
+results_data = None
+
+@app.route('/')
+def index():
+    global results_data
+    
+    if results_data is None:
+        return "Test not run yet. Please run the test first."
+    
+    df, best_params, best_sharpe, best_curve, market_ret, heatmap_data, smas, xs = results_data
+    best_sma, best_x = best_params
+    
+    # Create plot
+    plot_img = create_plot(df, best_params, best_sharpe, best_curve, market_ret, heatmap_data, smas, xs)
+    
+    # HTML template
+    html_template = '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Returns Over Time - SMA Strategy Backtest</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .container { max-width: 1200px; margin: 0 auto; }
+            .results { background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+            .plot { text-align: center; }
+            img { max-width: 100%; height: auto; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Returns Over Time - SMA Strategy Backtest</h1>
+            
+            <div class="results">
+                <h2>Test Results</h2>
+                <p><strong>Best SMA Period:</strong> {{ best_sma }}</p>
+                <p><strong>Best Threshold X:</strong> {{ best_x_percent }}</p>
+                <p><strong>Best Sharpe Ratio:</strong> {{ best_sharpe }}</p>
+            </div>
+            
+            <div class="plot">
+                <h2>Equity Curve and Sharpe Ratio Heatmap</h2>
+                <img src="data:image/png;base64,{{ plot_img }}" alt="Returns Plot">
+            </div>
+            
+            <div style="margin-top: 20px; color: #666;">
+                <p>Server running on port 8080. Refresh to see updated results if test is re-run.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+    
+    return render_template_string(html_template, 
+                                 best_sma=best_sma,
+                                 best_x_percent=f"{best_x:.1%}",
+                                 best_sharpe=f"{best_sharpe:.4f}",
+                                 plot_img=plot_img)
+
+if __name__ == "__main__":
+    SYMBOL = "BTCUSDT"
+    
+    print("Starting test...")
+    
+    # 1. Fetch
+    df = fetch_binance_data(SYMBOL)
+    
+    # 2. Run Grid Search
+    best_params, best_sharpe, best_curve, market_ret, heatmap_data, smas, xs = run_single_sma_grid(df)
+    
+    best_sma, best_x = best_params
+    
+    print(f"\n--- RESULTS ---")
+    print(f"Best SMA Period: {best_sma}")
+    print(f"Best Threshold X: {best_x:.1%}")
+    print(f"Best Sharpe Ratio: {best_sharpe:.4f}")
+    
+    # Store results globally
+    global results_data
+    results_data = (df, best_params, best_sharpe, best_curve, market_ret, heatmap_data, smas, xs)
+    
+    print("\nTest complete. Starting web server on port 8080...")
+    print("Open http://localhost:8080 in your browser to view the plot.")
+    
+    # Start Flask server
+    app.run(host='0.0.0.0', port=8080, debug=False)
