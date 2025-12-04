@@ -4,77 +4,6 @@ import numpy as np
 import time
 from datetime import datetime
 import matplotlib.pyplot as plt
-from flask import Flask, render_template, send_file
-import io
-import base64
-
-# Create Flask app
-app = Flask(__name__)
-
-# Global variables to store results
-results_data = None
-# Create Flask app
-app = Flask(__name__)
-
-# Global variables to store results
-results_data = None
-
-# -----------------------------------------------------------------------------
-# ROUTE: Main page with results
-# -----------------------------------------------------------------------------
-@app.route('/')
-def index():
-    # Fetch data
-    df = fetch_binance_data(symbol="BTCUSDT", interval="1d", start_date="2018-01-01")
-    
-    # Run optimization
-    best_params, best_sharpe, best_curve, market_returns, results_matrix, sma_periods, x_values = run_single_sma_grid(df)
-    
-    # Generate plots
-    fig, axes = plt.subplots(2, 1, figsize=(12, 10))
-    
-    # Top plot: Equity curve
-    axes[0].plot(np.cumsum(market_returns), label='Market (Buy & Hold)', color='blue', linewidth=2)
-    axes[0].plot(best_curve, label=f'Strategy (Sharpe: {best_sharpe:.4f})', color='green', linewidth=2)
-    axes[0].set_title('Equity Curve Comparison')
-    axes[0].set_ylabel('Cumulative Log Return')
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
-    
-    # Bottom plot: Heatmap
-    im = axes[1].imshow(results_matrix, aspect='auto', origin='lower', 
-                        extent=[x_values[0]*100, x_values[-1]*100, sma_periods[0], sma_periods[-1]],
-                        cmap='RdYlGn')
-    axes[1].set_title('Sharpe Ratio Heatmap (SMA Period vs Entry Threshold X)')
-    axes[1].set_xlabel('Entry Threshold X (%)')
-    axes[1].set_ylabel('SMA Period')
-    plt.colorbar(im, ax=axes[1], label='Sharpe Ratio')
-    
-    # Mark best point on heatmap
-    best_sma, best_x, best_s = best_params
-    axes[1].plot(best_x * 100, best_sma, 'ro', markersize=10, label=f'Best: SMA={best_sma}, X={best_x*100:.1f}%')
-    axes[1].legend()
-    
-    plt.tight_layout()
-    
-    # Convert plot to base64 for HTML
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=100)
-    buf.seek(0)
-    plot_url = base64.b64encode(buf.getvalue()).decode('utf-8')
-    plt.close(fig)
-    
-    # Prepare data for template
-    data = {
-        'symbol': 'BTCUSDT',
-        'best_sma': best_params[0],
-        'best_x': best_params[1],
-        'best_s': best_params[2],
-        'best_sharpe': best_sharpe,
-        'plot_url': plot_url
-    }
-    
-    return render_template('index.html', data=data)
 
 # -----------------------------------------------------------------------------
 # 1. DATA FETCHING
@@ -113,52 +42,52 @@ def fetch_binance_data(symbol="BTCUSDT", interval="1d", start_date="2018-01-01")
     df["date"] = pd.to_datetime(df["open_time"], unit="ms")
     df.set_index("date", inplace=True)
     
-    # Return Open, High, Low, Close for Stop Loss logic
     return df[["open", "high", "low", "close"]]
 
 # -----------------------------------------------------------------------------
-# 2. GRID SEARCH (SINGLE SMA + STOP LOSS)
+# 2. GRID SEARCH (INTRADAY OPEN-TO-CLOSE)
 # -----------------------------------------------------------------------------
 def run_single_sma_grid(df):
     """
-    Optimizes:
+    Optimizes Intraday Strategy:
     1. SMA Period (1-365)
     2. Entry Threshold X% (-5% to +5%)
     3. Stop Loss S% (1% to 10%)
+    
+    Simulates: Enter Open -> Exit Close (Daily Compounding).
     """
-    print("\n--- Starting Grid Search (SMA + Stop Loss) ---")
+    print("\n--- Starting Grid Search (Intraday: Open-to-Close) ---")
     
     # --- Parameter Spaces ---
-    # SMA: 1 to 365 in steps of 4 (Speeds up search slightly while maintaining granularity)
     sma_periods = np.arange(1, 366, 2)
-    
-    # X: -0.05 to +0.05
     x_values = np.arange(-0.05, 0.051, 0.005)
-    
-    # S: Stop Loss from 1% to 10%
     s_values = np.arange(0.01, 0.11, 0.01)
     
-    # Base Arrays (Numpy for speed)
+    # Base Arrays
     closes = df['close'].to_numpy()
     opens = df['open'].to_numpy()
     highs = df['high'].to_numpy()
     lows = df['low'].to_numpy()
     
-    # Standard Market Returns (Log Close-to-Close)
-    market_returns = np.log(df['close'] / df['close'].shift(1)).fillna(0).to_numpy()
+    # --- RETURN CALCULATIONS ---
+    # Benchmark: Standard Close-to-Close (Holding overnight)
+    benchmark_returns = np.log(df['close'] / df['close'].shift(1)).fillna(0).to_numpy()
+    
+    # Strategy Basis: Intraday Open-to-Close
+    # Logic: We enter at Open, Exit at Close. No overnight gap exposure.
+    intraday_returns = np.log(df['close'] / df['open']).to_numpy()
     
     best_sharpe = -np.inf
     best_params = None
     best_curve = None
     
-    # For Heatmap, we will project the best S onto the SMA vs X plane
     results_matrix = np.zeros((len(sma_periods), len(x_values)))
     
     start_time = time.time()
     
     # 2. Loop over SMAs
     for i, period in enumerate(sma_periods):
-        # Calculate shifted SMA (yesterday's SMA)
+        # SMA calculated on Closes, shifted 1 day to represent "Yesterday's SMA"
         sma = df['close'].rolling(window=period).mean().shift(1).to_numpy()
         valid_mask = ~np.isnan(sma)
         
@@ -168,43 +97,29 @@ def run_single_sma_grid(df):
             upper_band = sma * (1 + x)
             lower_band = sma * (1 - x)
             
-            # --- Determine Raw Positions ---
+            # --- Determine Position at Open ---
+            # Compare Open price to the Bands derived from Yesterday's SMA
             long_entry = (opens > upper_band)
             short_entry = (opens < lower_band)
             
-            # Resolve overlaps (if x < 0, Long priority)
+            # Resolve overlaps (Long priority if X is negative)
             raw_positions = np.zeros_like(opens)
-            # Apply Short first
             raw_positions[short_entry] = -1
-            # Apply Long (overwrites Short if overlap)
             raw_positions[long_entry] = 1
             
             # --- Inner Loop: Stop Loss S ---
-            # We check which S yields best result for this specific SMA/X combo
             best_s_sharpe = -np.inf
             
             for s in s_values:
-                # Copy positions to avoid modifying the base array for next S iteration
-                # (Actually, we calculate returns derived from positions, so we don't need to copy positions array itself
-                #  if we build the return array fresh).
+                # 1. Calculate Base Strategy Returns (Intraday)
+                daily_returns = raw_positions * intraday_returns
                 
-                # 1. Calculate Base Strategy Returns
-                daily_returns = raw_positions * market_returns
-                
-                # 2. Check Stop Loss Conditions
-                # Long Stop: Low < Open * (1 - s)
-                # Short Stop: High > Open * (1 + s)
-                
-                # Masks for where stops are hit
-                # Note: We only care if we are actually IN a position
+                # 2. Check Stop Loss Conditions (Intraday High/Low vs Open)
                 sl_long_hit = (raw_positions == 1) & (lows < opens * (1 - s))
                 sl_short_hit = (raw_positions == -1) & (highs > opens * (1 + s))
                 
-                # 3. Apply Penalty
-                # If stop hit, return is fixed to -s% (using log(1-s) for log-return consistency)
+                # 3. Apply Penalty (Realized loss of s%)
                 penalty = np.log(1 - s)
-                
-                # Overwrite returns where stop was hit
                 daily_returns[sl_long_hit] = penalty
                 daily_returns[sl_short_hit] = penalty
                 
@@ -215,29 +130,76 @@ def run_single_sma_grid(df):
                 else:
                     mean_r = np.mean(active_rets)
                     std_r = np.std(active_rets)
+                    # Annualize Sharpe (365 trading days)
                     sharpe = (mean_r / std_r) * np.sqrt(365) if std_r > 1e-9 else 0
                 
-                # Check against local best (for this SMA/X cell)
                 if sharpe > best_s_sharpe:
                     best_s_sharpe = sharpe
                 
-                # Check against global best
                 if sharpe > best_sharpe:
                     best_sharpe = sharpe
                     best_params = (period, x, s)
                     best_curve = np.cumsum(daily_returns)
             
-            # Store best Sharpe for this SMA/X combination (across all S) in matrix
             results_matrix[i, j] = best_s_sharpe
 
     print(f"Optimization complete in {time.time() - start_time:.2f}s.")
-    return best_params, best_sharpe, best_curve, market_returns, results_matrix, sma_periods, x_values
+    return best_params, best_sharpe, best_curve, benchmark_returns, results_matrix, sma_periods, x_values
 
 # -----------------------------------------------------------------------------
 # MAIN
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Start Flask web server on port 8080
-    print("Starting web server on port 8080...")
-    print("Open http://localhost:8080 in your browser to view the results")
-    app.run(host='0.0.0.0', port=8080, debug=False)
+    SYMBOL = "BTCUSDT"
+    
+    # 1. Fetch
+    df = fetch_binance_data(SYMBOL)
+    
+    # 2. Run Grid Search
+    # Returns extended to include benchmark_returns
+    best_params, best_sharpe, best_curve, benchmark_ret, heatmap_data, smas, xs = run_single_sma_grid(df)
+    
+    best_sma, best_x, best_s = best_params
+    
+    print(f"\n--- RESULTS (Intraday Open-to-Close) ---")
+    print(f"Best SMA Period : {best_sma}")
+    print(f"Best Threshold X: {best_x:.1%}")
+    print(f"Best Stop Loss S: {best_s:.1%}")
+    print(f"Best Sharpe Ratio: {best_sharpe:.4f}")
+    
+    # 3. Visualization
+    fig = plt.figure(figsize=(14, 10))
+    gs = fig.add_gridspec(2, 2)
+    
+    # Plot A: Equity Curve
+    ax1 = fig.add_subplot(gs[0, :])
+    dates = df.index
+    
+    # Compare against standard Buy & Hold (Close-to-Close)
+    market_cum = np.exp(np.cumsum(benchmark_ret))
+    
+    # Strategy Curve (Intraday Compounded)
+    strat_cum = np.exp(np.pad(best_curve, (0,0))) 
+    
+    ax1.plot(dates, market_cum, label="Buy & Hold (Standard)", color='gray', alpha=0.5)
+    ax1.plot(dates, strat_cum, label=f"Intraday Strategy (SMA {best_sma}, x={best_x:.1%})", color='purple')
+    ax1.set_title(f"Equity Curve: Intraday (Open -> Close) Compounding")
+    ax1.set_yscale('log')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot B: Heatmap
+    ax2 = fig.add_subplot(gs[1, :])
+    X, Y = np.meshgrid(xs * 100, smas)
+    
+    c = ax2.pcolormesh(X, Y, heatmap_data, shading='auto', cmap='viridis')
+    fig.colorbar(c, ax=ax2, label='Sharpe Ratio')
+    
+    ax2.plot(best_x*100, best_sma, 'r*', markersize=15, markeredgecolor='white', label='Optimal')
+    ax2.set_title("Sharpe Ratio Heatmap (Best Stop Loss per cell)")
+    ax2.set_xlabel("Threshold X (%)")
+    ax2.set_ylabel("SMA Period")
+    ax2.legend()
+    
+    plt.tight_layout()
+    plt.show()
