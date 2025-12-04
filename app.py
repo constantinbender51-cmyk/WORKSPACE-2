@@ -1,6 +1,3 @@
-import io
-import base64
-from flask import Flask, render_template_string
 import requests
 import pandas as pd
 import numpy as np
@@ -8,6 +5,9 @@ import time
 from datetime import datetime
 import matplotlib.pyplot as plt
 import itertools
+import io
+import base64
+from flask import Flask, render_template_string
 
 app = Flask(__name__)
 
@@ -156,18 +156,22 @@ def run_heavy_grid_search(df):
     return best_params, best_sharpe, best_equity_curve, market_returns
 
 # -----------------------------------------------------------------------------
-# WEB ROUTES
+# FLASK ROUTES
 # -----------------------------------------------------------------------------
 @app.route('/')
 def index():
-    # Run the backtest
+    """Main page that runs backtest and displays plot"""
     SYMBOL = "BTCUSDT"
+    
+    # 1. Fetch data
     df = fetch_binance_data(SYMBOL)
+    
+    # 2. Run Grid Search
     best_params, best_sharpe, best_curve, market_returns = run_heavy_grid_search(df)
     
     z, o, x, y = best_params
     
-    # Create the plot
+    # 3. Create plot
     plt.figure(figsize=(10, 6))
     
     # Convert log returns to cumulative percentage
@@ -186,16 +190,16 @@ def index():
     plt.grid(True, which='both', alpha=0.3)
     
     # Save plot to a bytes buffer
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png')
-    buf.seek(0)
+    img = io.BytesIO()
+    plt.savefig(img, format='png', bbox_inches='tight')
+    img.seek(0)
     plt.close()
     
-    # Encode the image to base64
-    plot_data = base64.b64encode(buf.getvalue()).decode('utf-8')
+    # Encode plot to base64 for HTML
+    plot_url = base64.b64encode(img.getvalue()).decode('utf8')
     
-    # Create HTML with the plot
-    html_template = """
+    # Create HTML template
+    html_template = '''
     <!DOCTYPE html>
     <html>
     <head>
@@ -203,8 +207,8 @@ def index():
         <style>
             body { font-family: Arial, sans-serif; margin: 40px; }
             h1 { color: #333; }
-            .results { background: #f5f5f5; padding: 20px; border-radius: 5px; margin: 20px 0; }
-            img { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 5px; }
+            .results { background: #f5f5f5; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
+            img { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; }
         </style>
     </head>
     <body>
@@ -213,25 +217,20 @@ def index():
             <h2>Optimal Results</h2>
             <p><strong>SMA Period Z:</strong> {{ z }}</p>
             <p><strong>SMA Period O:</strong> {{ o }}</p>
-            <p><strong>Threshold X:</strong> {{ x_percent }}</p>
-            <p><strong>Threshold Y:</strong> {{ y_percent }}</p>
+            <p><strong>Threshold X:</strong> {{ x_pct }}</p>
+            <p><strong>Threshold Y:</strong> {{ y_pct }}</p>
             <p><strong>Sharpe Ratio:</strong> {{ sharpe }}</p>
         </div>
-        <div>
-            <h2>Equity Curve</h2>
-            <img src="data:image/png;base64,{{ plot_data }}" alt="Backtest Plot">
-        </div>
-        <p><em>Note: This backtest runs each time the page is loaded and may take 10-20 seconds.</em></p>
+        <h2>Performance Chart</h2>
+        <img src="data:image/png;base64,{{ plot_url }}" alt="Backtest Plot">
+        <p><em>Server running on port 8080. Chart shows cumulative returns (log scale).</em></p>
     </body>
     </html>
-    """
+    '''
     
     return render_template_string(html_template, 
-                                  z=z, o=o, 
-                                  x_percent=f"{x:.2%}", 
-                                  y_percent=f"{y:.2%}", 
-                                  sharpe=f"{best_sharpe:.4f}", 
-                                  plot_data=plot_data)
+                                  z=z, o=o, x_pct=f"{x:.2%}", y_pct=f"{y:.2%}", 
+                                  sharpe=f"{best_sharpe:.4f}", plot_url=plot_url)
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080, debug=False)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080, debug=False)
