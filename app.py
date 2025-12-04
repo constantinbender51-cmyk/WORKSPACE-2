@@ -189,7 +189,7 @@ def index():
     ax1.plot(dates, market_cum, label="Buy & Hold (Standard)", color='gray', alpha=0.5)
     ax1.plot(dates, strat_cum, label=f"Intraday Strategy (SMA {best_sma}, x={best_x:.1%})", color='purple')
     ax1.set_title(f"Equity Curve: Intraday (Open -> Close) Compounding")
-    ax1.set_yscale('log')
+    ax1.set_yscale('linear')
     ax1.legend()
     ax1.grid(True, alpha=0.3)
     
