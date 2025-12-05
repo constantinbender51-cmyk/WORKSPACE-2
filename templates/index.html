@@ -93,6 +93,13 @@
             <div class="result-item">Best Stop Loss S: <span class="result-value">{{ "%.1f"|format(data.best_s * 100) }}%</span></div>
             <div class="result-item">Best Sharpe Ratio: <span class="result-value">{{ "%.4f"|format(data.best_sharpe) }}</span></div>
             <div class="result-item">Rolling Average Return (3x Leverage): <span class="result-value">{{ "%.4f"|format(data.avg_return_4months) }}</span></div>
+            <div class="result-item">Monthly Returns (%): 
+                <ul style="margin: 5px 0; padding-left: 20px;">
+                    {% for ret in data.monthly_returns %}
+                    <li>{{ "%.2f"|format(ret) }}%</li>
+                    {% endfor %}
+                </ul>
+            </div>
         </div>
         
         <div class="plot-container">
