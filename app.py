@@ -138,11 +138,11 @@ def run_dual_sma_grid(df):
     print("\n--- Starting Grid Search (5-Dimensional) ---")
     
     # Range Settings
-    sma1_periods = np.arange(10, 200, 10) # Logic
-    sma2_periods = np.arange(20, 200, 20) # Filter
+    sma1_periods = np.arange(10, 200, 2) # Logic
+    sma2_periods = np.arange(20, 200, 2) # Filter
     x_values = np.arange(0.00, 0.051, 0.01) # Band
-    s_values = np.arange(0.02, 0.101, 0.02) # Stop Loss
-    r_values = np.arange(0.02, 0.201, 0.04) # Take Profit
+    s_values = np.arange(0.00, 0.101, 0.02) # Stop Loss
+    r_values = np.arange(0.00, 0.201, 0.04) # Take Profit
     
     total_combos = len(sma1_periods)*len(sma2_periods)*len(x_values)*len(s_values)*len(r_values)
     print(f"Scanning {total_combos} combinations...")
