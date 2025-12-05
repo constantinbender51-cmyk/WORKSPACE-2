@@ -252,12 +252,14 @@ def run_dual_sma_grid(df):
             print(f"Processed SMA1 period {p1}...")
 
     print(f"Optimization complete in {time.time() - start_time:.2f}s.")
-    # Calculate monthly returns for the best strategy
+    # Calculate monthly returns for the best strategy with 3x leverage
     monthly_returns = []
     if best_curve is not None:
         # Get daily returns from the best strategy (best_curve is cumulative, so diff it)
         daily_returns = np.diff(best_curve, prepend=0)
-        monthly_returns = calculate_monthly_returns(daily_returns, df.index)
+        # Apply 3x leverage to daily returns
+        leveraged_daily_returns = daily_returns * 3
+        monthly_returns = calculate_monthly_returns(leveraged_daily_returns, df.index)
     
     return best_params, best_sharpe, best_curve, benchmark_returns, results_matrix, sma1_periods, sma2_periods, monthly_returns
 
