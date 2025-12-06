@@ -175,6 +175,9 @@ def index():
     # Calculate simple returns for the entire DataFrame
     df['returns'] = df['close'].pct_change()
     
+    # Calculate 120-day SMA of close price for conditional logic
+    df['close_sma_120'] = df['close'].rolling(window=120, min_periods=1).mean()
+    
     # Debug: Print data info
     print(f"DataFrame info:")
     print(f"  Shape: {df.shape}")
@@ -191,8 +194,24 @@ def index():
 
     temp_df['iii_sma_yesterday'] = temp_df['iii_sma'].shift(1)
     
-    # Calculate the daily factor for compounding
-    daily_compounding_factor = 1 + (temp_df['iii_sma_yesterday'] * temp_df['returns'])
+    # Add yesterday's close price and its 120-day SMA to temp_df for alignment
+    temp_df['close_yesterday'] = df['close'].shift(1)
+    temp_df['close_sma_120_yesterday'] = df['close_sma_120'].shift(1)
+    
+    # Determine the multiplier for returns based on the condition:
+    # If yesterday's close price is above yesterday's 120-day SMA, use original return (multiplier = 1)
+    # Else (price below or equal to SMA), use negative return (multiplier = -1)
+    return_multiplier = np.where(
+        temp_df['close_yesterday'] > temp_df['close_sma_120_yesterday'],
+        1,
+        -1
+    )
+    
+    # Apply the multiplier to today's simple return
+    modified_returns = temp_df['returns'] * return_multiplier
+    
+    # Calculate the daily factor for compounding using the modified returns
+    daily_compounding_factor = 1 + (temp_df['iii_sma_yesterday'] * modified_returns)
     
     # Compute the cumulative product for compounding
     cumulative_compounded_series = daily_compounding_factor.cumprod()
@@ -252,7 +271,7 @@ def index():
     if not iii_sma_x_returns.empty:
         plt.figure(figsize=(12, 6))
         plt.plot(iii_sma_x_returns.index, iii_sma_x_returns.values, color='purple', linewidth=1.5)
-        plt.title(f'{SYMBOL} Cumulative Product of (1 + Yesterday\'s III SMA * Today\'s Return) ({ROLLING_WINDOW_DAYS}-day Rolling, 14-day SMA)', fontsize=16, fontweight='bold')
+        plt.title(f'{SYMBOL} Conditional Cumulative Compounded Returns with III SMA ({ROLLING_WINDOW_DAYS}-day Rolling, 14-day SMA)', fontsize=16, fontweight='bold')
         plt.xlabel('Date', fontsize=12)
         plt.ylabel('Cumulative Compounded Value', fontsize=12)
         plt.grid(True, alpha=0.3)
