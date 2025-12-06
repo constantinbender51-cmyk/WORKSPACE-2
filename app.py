@@ -183,60 +183,46 @@ def index():
         print(f"First 5 values: {inefficiency_series.head().tolist()}")
         print(f"Last 5 values: {inefficiency_series.tail().tolist()}")
     
-    # Create price chart with Matplotlib
+    # Create combined price and inverse inefficiency index chart with second y-axis
     plt.figure(figsize=(12, 6))
-    plt.plot(df.index, df['close'], color='blue', linewidth=1.5)
-    plt.title(f'{SYMBOL} Price (Daily Close)', fontsize=16, fontweight='bold')
-    plt.xlabel('Date', fontsize=12)
-    plt.ylabel('Price (USDT)', fontsize=12)
-    plt.grid(True, alpha=0.3)
+    
+    # Plot price on primary y-axis (left)
+    ax1 = plt.gca()
+    ax1.plot(df.index, df['close'], color='blue', linewidth=1.5, label='Price')
+    ax1.set_xlabel('Date', fontsize=12)
+    ax1.set_ylabel('Price (USDT)', fontsize=12, color='blue')
+    ax1.tick_params(axis='y', labelcolor='blue')
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot inverse inefficiency index on secondary y-axis (right) if data exists
+    if not inefficiency_series.empty:
+        ax2 = ax1.twinx()
+        ax2.plot(inefficiency_series.index, inefficiency_series.values, color='red', linewidth=1.5, label='Inverse Inefficiency Index')
+        ax2.set_ylabel('Inverse Inefficiency Index (1/x)', fontsize=12, color='red')
+        ax2.tick_params(axis='y', labelcolor='red')
+        # Set y-axis range for inverse inefficiency index if needed
+        if inefficiency_series.max() > 10:
+            ax2.set_ylim(0, min(100, inefficiency_series.max() * 1.1))
+        # Add legend for both axes
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+    else:
+        # Add legend for price only if no inefficiency data
+        ax1.legend(loc='upper left')
+    
+    plt.title(f'{SYMBOL} Price with Inverse Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling)', fontsize=16, fontweight='bold')
     plt.tight_layout()
     
     # Save plot to base64 string
-    img_price = io.BytesIO()
-    plt.savefig(img_price, format='png', dpi=100)
+    img_combined = io.BytesIO()
+    plt.savefig(img_combined, format='png', dpi=100)
     plt.close()
-    img_price.seek(0)
-    price_chart_url = base64.b64encode(img_price.getvalue()).decode('utf8')
-    
-    # Create inefficiency index chart
-    if inefficiency_series.empty:
-        # Create an empty figure if no data
-        plt.figure(figsize=(12, 6))
-        plt.text(0.5, 0.5, 'No inefficiency index data available\n(check window size or data)', 
-                 horizontalalignment='center', verticalalignment='center',
-                 transform=plt.gca().transAxes, fontsize=14)
-        plt.title(f'{SYMBOL} Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling) - No Data', 
-                  fontsize=16, fontweight='bold')
-        plt.xlabel('Date', fontsize=12)
-        plt.ylabel('Inefficiency Index', fontsize=12)
-        plt.grid(True, alpha=0.3)
-        plt.tight_layout()
-    else:
-        plt.figure(figsize=(12, 6))
-        plt.plot(inefficiency_series.index, inefficiency_series.values, color='red', linewidth=1.5)
-        plt.title(f'{SYMBOL} Inverse Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling)', 
-                  fontsize=16, fontweight='bold')
-        plt.xlabel('Date', fontsize=12)
-        plt.ylabel('Inverse Inefficiency Index (1/x)', fontsize=12)
-        plt.grid(True, alpha=0.3)
-        
-        # Set y-axis range if needed
-        if inefficiency_series.max() > 10:
-            plt.ylim(0, min(100, inefficiency_series.max() * 1.1))
-        
-        plt.tight_layout()
-    
-    # Save plot to base64 string
-    img_inefficiency = io.BytesIO()
-    plt.savefig(img_inefficiency, format='png', dpi=100)
-    plt.close()
-    img_inefficiency.seek(0)
-    inefficiency_chart_url = base64.b64encode(img_inefficiency.getvalue()).decode('utf8')
+    img_combined.seek(0)
+    combined_chart_url = base64.b64encode(img_combined.getvalue()).decode('utf8')
     
     return render_template('index.html',
-                           price_chart_url=price_chart_url,
-                           inefficiency_chart_url=inefficiency_chart_url,
+                           combined_chart_url=combined_chart_url,
                            symbol=SYMBOL,
                            window=ROLLING_WINDOW_DAYS)
 
