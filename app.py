@@ -2,8 +2,8 @@ import ccxt
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import matplotlib.collections
+import matplotlib.dates as mdates
+from matplotlib.collections import LineCollection
 from datetime import datetime
 from flask import Flask, send_file
 import os
@@ -52,16 +52,14 @@ def fetch_binance_history(symbol, start_str):
 df = fetch_binance_history(symbol, start_date_str)
 
 # --- A. CALCULATE INVERTED INEFFICIENCY INDEX (III) ---
-# Formula: Abs(Net Change) / Sum(Abs(Changes))
-# Range: 0 to 1
-
+# Definition: Efficiency Ratio (ER). 
+# Range: 0 (Pure Noise) to 1 (Pure Trend)
 df['log_ret'] = np.log(df['close'] / df['close'].shift(1))
 
 # Numerator: Absolute Net Direction over window
-# We use rolling sum of log returns = log(Close_t / Close_t-n)
 df['net_direction'] = df['log_ret'].rolling(III_WINDOW).sum().abs()
 
-# Denominator: Sum of absolute individual moves (Path Length)
+# Denominator: Sum of absolute individual moves (Total Path)
 df['path_length'] = df['log_ret'].abs().rolling(III_WINDOW).sum()
 
 # The Index
@@ -128,7 +126,7 @@ for i in range(start_idx, len(df)):
 # ----------------
 plt.figure(figsize=(14, 14))
 
-# Filter data
+# Filter data for plotting
 plot_data = df.iloc[start_idx:].copy()
 
 # Plot 1: Strategy Performance
@@ -136,63 +134,75 @@ ax1 = plt.subplot(3, 1, 1)
 ax1.plot(plot_data.index, plot_data['strategy_equity'], label='Strategy Equity', color='blue', linewidth=2)
 ax1.plot(plot_data.index, plot_data['buy_hold_equity'], label='Buy & Hold', color='gray', alpha=0.5)
 ax1.set_yscale('log')
-ax1.set_title('Strategy vs Buy & Hold (No Circuit Breakers)')
+ax1.set_title('Strategy vs Buy & Hold')
 ax1.legend()
 ax1.grid(True, which='both', linestyle='--', alpha=0.3)
 
 # Plot 2: The Inverted Inefficiency Index (III)
 ax2 = plt.subplot(3, 1, 2, sharex=ax1)
-# Color code the line:
-# High values (Efficiency) = Green
-# Low values (Chop) = Red
-points = np.array([plot_data.index.astype(np.int64) // 10**9, plot_data['iii']]).T.reshape(-1, 1, 2)
+
+# Correctly handle dates for LineCollection
+# Convert pandas timestamps to Matplotlib floats
+# We use [:-1] and [1:] to create segments
+dates_num = mdates.date2num(plot_data.index.to_pydatetime())
+iii_values = plot_data['iii'].values
+
+points = np.array([dates_num, iii_values]).T.reshape(-1, 1, 2)
 segments = np.concatenate([points[:-1], points[1:]], axis=1)
 
-# Create a continuous norm to map from 0 to 1
+# Create a continuous norm to map color
 norm = plt.Normalize(0, 1)
-lc = matplotlib.collections.LineCollection(segments, cmap='RdYlGn', norm=norm)
-lc.set_array(plot_data['iii'])
+# Colormap: Red (Low Efficiency/Chop) -> Yellow -> Green (High Efficiency/Trend)
+lc = LineCollection(segments, cmap='RdYlGn', norm=norm)
+lc.set_array(iii_values)
 lc.set_linewidth(1.5)
 ax2.add_collection(lc)
-ax2.autoscale_view()
+
+# Set axis limits explicitly because add_collection doesn't auto-scale well
+ax2.set_xlim(dates_num.min(), dates_num.max())
+ax2.set_ylim(0, 1)
 
 # Add Threshold lines
-ax2.axhline(0.6, color='green', linestyle='--', alpha=0.5, label='High Efficiency (Trend)')
-ax2.axhline(0.2, color='red', linestyle='--', alpha=0.5, label='Low Efficiency (Chop)')
-ax2.set_ylabel('Efficiency (0=Chop, 1=Trend)')
-ax2.set_title('Inverted Inefficiency Index (III)')
+ax2.axhline(0.6, color='green', linestyle='--', alpha=0.5, label='High Efficiency (>0.6)')
+ax2.axhline(0.2, color='red', linestyle='--', alpha=0.5, label='Low Efficiency (<0.2)')
+ax2.set_ylabel('Efficiency Ratio (III)')
+ax2.set_title('Inverted Inefficiency Index (0=Chop, 1=Trend)')
 ax2.legend(loc='upper left')
 ax2.grid(True, alpha=0.3)
 
-# Plot 3: Scatter Analysis (Does III predict Volatility/Big Moves?)
+# Plot 3: Scatter Analysis
 # We plot III (x-axis) vs Absolute Next Day Return (y-axis)
 ax3 = plt.subplot(3, 1, 3)
+
 # Shift returns back by 1 to align "Today's III" with "Tomorrow's Move"
 x_scatter = plot_data['iii'][:-1]
 y_scatter = plot_data['daily_ret'].abs().shift(-1).dropna()
-# Ensure alignment
+
+# Ensure alignment of indices
 common_idx = x_scatter.index.intersection(y_scatter.index)
 x_scatter = x_scatter.loc[common_idx]
 y_scatter = y_scatter.loc[common_idx]
 
 # Color points by positive (profit) vs negative (loss) return
+# We need to look at the raw return for coloring, not the abs return
 raw_ret = plot_data['daily_ret'].shift(-1).loc[common_idx]
 colors = ['green' if r > 0 else 'red' for r in raw_ret]
 
 ax3.scatter(x_scatter, y_scatter, c=colors, alpha=0.4, s=10)
 ax3.set_xlabel('III Value (Today)')
 ax3.set_ylabel('Absolute Return (Tomorrow)')
-ax3.set_title('Correlation: Does High Efficiency Predict Big Moves Tomorrow?')
+ax3.set_title('Does High Efficiency Predict Volatility? (Scatter)')
+
 # Add trendline
-z = np.polyfit(x_scatter, y_scatter, 1)
-p = np.poly1d(z)
-ax3.plot(x_scatter, p(x_scatter), "k--", alpha=0.5, label=f'Trend Line')
+if len(x_scatter) > 0:
+    z = np.polyfit(x_scatter, y_scatter, 1)
+    p = np.poly1d(z)
+    ax3.plot(x_scatter, p(x_scatter), "k--", alpha=0.5, label='Trend Line')
+
 ax3.legend()
 ax3.grid(True, alpha=0.3)
 
 plt.tight_layout()
-
-
 
 # Save
 plot_dir = '/app/static'
