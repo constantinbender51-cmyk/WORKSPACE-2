@@ -75,16 +75,24 @@ def calculate_inefficiency_index(df, window_days):
     if df is None or len(df) < window_days:
         return pd.Series([], dtype=float)
     
+    # Calculate log returns
     log_returns = np.log(df['close'] / df['close'].shift(1))
     
+    # Calculate rolling sums using numpy functions
     rolling_sum_abs_log_returns = log_returns.rolling(window=window_days).apply(
-        lambda x: np.sum(np.abs(x)) if not x.isnull().all() else np.nan, raw=True
+        lambda x: np.nansum(np.abs(x)) if not np.all(np.isnan(x)) else np.nan, raw=True
     )
     rolling_sum_log_returns = log_returns.rolling(window=window_days).sum()
     
+    # Calculate inefficiency index
     inefficiency_index = rolling_sum_abs_log_returns / np.abs(rolling_sum_log_returns)
+    
+    # Handle edge cases
     inefficiency_index = inefficiency_index.replace([np.inf, -np.inf], np.nan)
-    inefficiency_index[np.abs(rolling_sum_log_returns) < 1e-9] = np.nan
+    
+    # Handle near-zero denominators
+    denominator_mask = np.abs(rolling_sum_log_returns) < 1e-9
+    inefficiency_index[denominator_mask] = np.nan
     
     return inefficiency_index
 
