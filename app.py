@@ -405,113 +405,96 @@ def grid_search():
     img_grid_search.seek(0)
     grid_search_chart_url = base64.b64encode(img_grid_search.getvalue()).decode('utf8')
 
-    return render_template('grid_search.html', 
-                           grid_search_chart_url=grid_search_chart_url,
-                           symbol=SYMBOL)
-
-@app.route('/bestiii')
-def plot_bestiii_equity():
-    # Fetch OHLCV data once
-    print(f"Fetching OHLCV data for plotting best III equity...")
-    base_df = fetch_ohlcv(SYMBOL, START_DATE_STR)
-    
-    if base_df is None or base_df.empty:
-        return "<p>Failed to fetch base data for plotting best III equity.</p>", 500
-
+    # After generating the grid search plot, find the best period and generate its equity plot
     optimal_periods = {}
     iii_periods = range(2, 121)  # From 2 to 120
 
-    # First, perform a grid search to find the best period
-    print("Performing grid search to find the best III period...")
+    # Re-fetch base_df if it was not stored or passed from the initial fetch in grid_search
+    # For simplicity, we'll re-fetch here, but a more optimized approach would pass it.
+    print(f"Fetching OHLCV data for best period equity plot...")
+    base_df = fetch_ohlcv(SYMBOL, START_DATE_STR)
+    if base_df is None or base_df.empty:
+        return render_template('grid_search.html', 
+                               grid_search_chart_url=grid_search_chart_url,
+                               symbol=SYMBOL,
+                               error_message="Failed to fetch data for equity plot after grid search.")
+
     for period in iii_periods:
-        # Use the pre-fetched base_df
         _, _, _, _, daily_strategy_returns, _ = get_processed_data(base_df, period)
-        
         if not daily_strategy_returns.empty:
             sharpe_ratio = calculate_sharpe_ratio(daily_strategy_returns)
             optimal_periods[period] = sharpe_ratio
         else:
             optimal_periods[period] = np.nan
-            
-    # Filter out NaN values and find the best period based on Sharpe Ratio
+
     valid_periods = {k: v for k, v in optimal_periods.items() if not np.isnan(v)}
-    
     if not valid_periods:
-        return "<p>No valid data found to determine the best III period.</p>", 500
+        return render_template('grid_search.html', 
+                               grid_search_chart_url=grid_search_chart_url,
+                               symbol=SYMBOL,
+                               error_message="No valid data found to determine best period for equity plot.")
 
     best_period = max(valid_periods, key=valid_periods.get)
-    print(f"Best III Period identified: {best_period} with Sharpe Ratio: {valid_periods[best_period]:.2f}")
+    best_sharpe = valid_periods[best_period]
+    print(f"Best III Period identified for equity plot: {best_period} with Sharpe Ratio: {best_sharpe:.2f}")
 
-    # Now, plot the equity curve for this best period
+    # Generate the equity plot for the best period
     print(f"Generating equity plot for the best III period: {best_period}...")
-    # Use the pre-fetched base_df again
-    df, _, _, iii_sma_x_returns, _, temp_df = get_processed_data(base_df, best_period)
+    _, _, _, iii_sma_x_returns, _, temp_df = get_processed_data(base_df, best_period)
 
-    if iii_sma_x_returns.empty:
-        return "<p>No equity data to plot for the best period.</p>", 500
+    equity_plot_url = None
+    if not iii_sma_x_returns.empty:
+        fig, ax = plt.subplots(figsize=(12, 6))
 
-    # Create the equity plot
-    fig, ax = plt.subplots(figsize=(12, 6))
+        def plot_spans(axis, condition_series, color_true, color_false, alpha=0.2):
+            if condition_series.empty:
+                return
+            current_segment_start = None
+            current_state = None
+            aligned_condition = temp_df['close_yesterday'] > temp_df['close_sma_120_yesterday']
+            aligned_condition = aligned_condition.reindex(iii_sma_x_returns.index).fillna(False)
 
-    # Helper function to plot colored background spans
-    def plot_spans(axis, condition_series, color_true, color_false, alpha=0.2):
-        if condition_series.empty:
-            return
-
-        current_segment_start = None
-        current_state = None
-
-        # Align condition series with the plot's index for accurate plotting
-        # Ensure temp_df has the same index as iii_sma_x_returns for comparison
-        aligned_condition = temp_df['close_yesterday'] > temp_df['close_sma_120_yesterday']
-        aligned_condition = aligned_condition.reindex(iii_sma_x_returns.index).fillna(False) # Fill NaNs at beginning as False
-
-        for i, (date, value) in enumerate(iii_sma_x_returns.index):
-            current_condition = aligned_condition.get(date, False) # Get condition for current date, default to False
-            
-            if current_segment_start is None:
-                current_segment_start = date
-                current_state = current_condition
-            elif current_condition != current_state:
-                # State changed, plot the previous segment
-                end_date = iii_sma_x_returns.index[i-1]
+            for i, (date, value) in enumerate(iii_sma_x_returns.index):
+                current_condition = aligned_condition.get(date, False)
+                if current_segment_start is None:
+                    current_segment_start = date
+                    current_state = current_condition
+                elif current_condition != current_state:
+                    end_date = iii_sma_x_returns.index[i-1]
+                    facecolor = color_true if current_state else color_false
+                    axis.axvspan(current_segment_start, end_date, facecolor=facecolor, alpha=alpha, zorder=0)
+                    current_segment_start = date
+                    current_state = current_condition
+            if current_segment_start is not None:
+                end_date = iii_sma_x_returns.index[-1]
                 facecolor = color_true if current_state else color_false
                 axis.axvspan(current_segment_start, end_date, facecolor=facecolor, alpha=alpha, zorder=0)
-                
-                current_segment_start = date
-                current_state = current_condition
-        
-        # Plot the last segment
-        if current_segment_start is not None:
-            end_date = iii_sma_x_returns.index[-1]
-            facecolor = color_true if current_state else color_false
-            axis.axvspan(current_segment_start, end_date, facecolor=facecolor, alpha=alpha, zorder=0)
 
-    # Use the condition from temp_df for coloring the background
-    plot_condition = temp_df['close_yesterday'] > temp_df['close_sma_120_yesterday']
-    plot_condition = plot_condition.reindex(iii_sma_x_returns.index).fillna(False)
+        plot_condition = temp_df['close_yesterday'] > temp_df['close_sma_120_yesterday']
+        plot_condition = plot_condition.reindex(iii_sma_x_returns.index).fillna(False)
 
-    # Plot background spans
-    plot_spans(ax, plot_condition, 'lightgreen', 'lightcoral')
+        plot_spans(ax, plot_condition, 'lightgreen', 'lightcoral')
+        ax.plot(iii_sma_x_returns.index, iii_sma_x_returns.values, color='purple', linewidth=1.5, zorder=1)
+        ax.set_title(f'{SYMBOL} Equity Curve for Best III Period ({best_period} Days)', fontsize=16, fontweight='bold')
+        ax.set_xlabel('Date', fontsize=12)
+        ax.set_ylabel('Cumulative Compounded Value', fontsize=12)
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
 
-    # Plot the equity curve on top
-    ax.plot(iii_sma_x_returns.index, iii_sma_x_returns.values, color='purple', linewidth=1.5, zorder=1)
-    ax.set_title(f'{SYMBOL} Equity Curve for Best III Period ({best_period} Days)', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Date', fontsize=12)
-    ax.set_ylabel('Cumulative Compounded Value', fontsize=12)
-    ax.grid(True, alpha=0.3)
-    fig.tight_layout()
+        img_equity_plot = io.BytesIO()
+        fig.savefig(img_equity_plot, format='png', dpi=100)
+        plt.close(fig)
+        img_equity_plot.seek(0)
+        equity_plot_url = base64.b64encode(img_equity_plot.getvalue()).decode('utf8')
 
-    img_equity_plot = io.BytesIO()
-    fig.savefig(img_equity_plot, format='png', dpi=100)
-    plt.close(fig)
-    img_equity_plot.seek(0)
-    equity_plot_url = base64.b64encode(img_equity_plot.getvalue()).decode('utf8')
-
-    return render_template('equity_plot.html', 
-                           equity_plot_url=equity_plot_url,
+    # Render a combined template showing grid search results and the equity plot
+    return render_template('grid_search_with_equity.html', 
+                           grid_search_chart_url=grid_search_chart_url,
                            symbol=SYMBOL,
+                           equity_plot_url=equity_plot_url,
                            best_period=best_period,
-                           best_sharpe=valid_periods[best_period])
+                           best_sharpe=best_sharpe)
+
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=PORT)
