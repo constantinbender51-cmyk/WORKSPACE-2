@@ -65,15 +65,10 @@ df['sma_slow'] = df['close'].rolling(SMA_SLOW).mean()
 
 # 3. GENERATE BASE RETURNS (1x)
 # -----------------------------
-# We calculate the daily return of the strategy at 1x leverage ONCE.
-# Later we just multiply this array by the leverage vector.
-
 print("Calculating Base Strategy Returns...")
 base_returns = []
 start_idx = max(SMA_SLOW, III_WINDOW)
 
-# We need a loop here because SL/TP logic is path-dependent intraday
-# However, this only runs ONCE, not for every grid point.
 for i in range(len(df)):
     if i < start_idx:
         base_returns.append(0.0)
@@ -112,48 +107,46 @@ for i in range(len(df)):
 
 df['base_ret'] = base_returns
 
-# 4. GRID SEARCH EXECUTION
-# ------------------------
-print("Starting Grid Search...")
+# 4. GRID SEARCH EXECUTION (SHARPE RATIO)
+# ---------------------------------------
+print("Starting Grid Search for Risk-Adjusted Returns...")
 
-# We use numpy arrays for speed
 base_ret_arr = df['base_ret'].values
-iii_prev_arr = df['iii'].shift(1).fillna(0).values # Use Yesterday's III
+iii_prev_arr = df['iii'].shift(1).fillna(0).values
 
 results = []
 thresholds = np.arange(RANGE_MIN, RANGE_MAX + 0.01, STEP)
 
-# Iterate High Threshold
 for high in thresholds:
-    # Iterate Low Threshold
     for low in thresholds:
-        if low >= high: continue # Logical constraint
+        if low >= high: continue 
         
-        # Vectorized Leverage Logic
-        # Default 4x
-        lev_arr = np.full(len(df), 4.0)
-        
-        # Apply 2x where III < high
+        # Leverage Logic
+        lev_arr = np.full(len(df), 4.0) # Default 4x
         lev_arr[iii_prev_arr < high] = 2.0
-        
-        # Apply 1x where III < low
         lev_arr[iii_prev_arr < low] = 1.0
         
-        # Calculate Equity Curve
         final_rets = base_ret_arr * lev_arr
         
-        # Approximate Liquidation Check (Vectorized)
-        # If any single day return is <= -100%, we bust.
-        # With 4x leverage, a -25% base move kills us.
-        # Our SL is 2%, so max loss is 8%. Gaps > 25% are rare but possible.
-        # We assume standard compounding for ranking.
+        # --- RISK METRICS ---
+        mean_ret = np.mean(final_rets)
+        std_ret = np.std(final_rets)
         
+        # Annualized Sharpe Ratio
+        # (Assuming risk-free rate = 0 for simplicity in crypto context)
+        if std_ret > 0:
+            sharpe = (mean_ret / std_ret) * np.sqrt(365)
+        else:
+            sharpe = 0.0
+            
+        # Total Return (for context)
         cum_ret = np.cumprod(1 + final_rets)
         total_ret = cum_ret[-1]
         
         results.append({
             'Low': round(low, 2),
             'High': round(high, 2),
+            'Sharpe': sharpe,
             'Total_Return': total_ret
         })
 
@@ -161,27 +154,24 @@ for high in thresholds:
 # ---------------------
 res_df = pd.DataFrame(results)
 
-# Find Best
-best_res = res_df.loc[res_df['Total_Return'].idxmax()]
-print("\n" + "="*30)
-print(f"BEST COMBINATION FOUND")
+# Find Best by Sharpe
+best_res = res_df.loc[res_df['Sharpe'].idxmax()]
+print("\n" + "="*35)
+print(f"BEST RISK-ADJUSTED PARAMETERS")
 print(f"Low Threshold:  {best_res['Low']}")
 print(f"High Threshold: {best_res['High']}")
+print(f"Sharpe Ratio:   {best_res['Sharpe']:.2f}")
 print(f"Total Return:   {best_res['Total_Return']:.2f}x")
-print("="*30 + "\n")
+print("="*35 + "\n")
 
 # Pivot for Heatmap
-pivot_table = res_df.pivot(index='Low', columns='High', values='Total_Return')
+pivot_table = res_df.pivot(index='Low', columns='High', values='Sharpe')
 
 # Visualization
 plt.figure(figsize=(12, 10))
-ax = sns.heatmap(pivot_table, annot=True, fmt=".1f", cmap="viridis", cbar_kws={'label': 'Total Equity Multiple'})
-plt.title('Grid Search: Total Return Multiplier\n(X=High Threshold, Y=Low Threshold)')
-plt.gca().invert_yaxis() # Standard Y axis direction
-
-# Highlight Best
-# We need to find coordinates for the rectangle
-# This is tricky in Seaborn heatmaps, so we just print it clearly.
+ax = sns.heatmap(pivot_table, annot=True, fmt=".2f", cmap="viridis", cbar_kws={'label': 'Sharpe Ratio (Annualized)'})
+plt.title('Grid Search: Sharpe Ratio Optimization\n(Find the "Safe & Profitable" Zone)')
+plt.gca().invert_yaxis()
 
 plt.tight_layout()
 
