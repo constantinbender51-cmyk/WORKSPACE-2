@@ -94,7 +94,15 @@ def calculate_inefficiency_index(df, window_days):
     denominator_mask = np.abs(rolling_sum_log_returns) < 1e-9
     inefficiency_index[denominator_mask] = np.nan
     
-    return inefficiency_index
+    # Clean the data for plotting
+    # Remove NaN values and cap extreme values for better visualization
+    inefficiency_index_clean = inefficiency_index.dropna()
+    
+    # Cap extreme values at 100 for visualization (still shows high inefficiency)
+    if not inefficiency_index_clean.empty:
+        inefficiency_index_clean = inefficiency_index_clean.clip(upper=100)
+    
+    return inefficiency_index_clean
 
 # Web server routes
 @app.route('/')
@@ -105,7 +113,14 @@ def index():
         return render_template('index.html', 
                                error_message="Could not fetch data. Please check logs.")
     
-    inefficiency_series = calculate_inefficiency_index(df, ROLLING_WINDOW_DAYS)
+    inefficiency_series = calculate_inefficiency_index(df, ROLLING_WINDOW_DAYS)    
+    # Debug: Print some statistics about the inefficiency index
+    print(f"Data length: {len(df)}")
+    print(f"Inefficiency series length: {len(inefficiency_series)}")
+    if not inefficiency_series.empty:
+        print(f"Inefficiency index stats - min: {inefficiency_series.min():.2f}, max: {inefficiency_series.max():.2f}, mean: {inefficiency_series.mean():.2f}")
+        print(f"First 5 values: {inefficiency_series.head().tolist()}")
+        print(f"Last 5 values: {inefficiency_series.tail().tolist()}")
     
     # Create price chart
     fig_price = px.line(df, x=df.index, y='close', 
@@ -114,10 +129,29 @@ def index():
     fig_price.update_layout(hovermode="x unified", template="plotly_dark")
     
     # Create inefficiency index chart
-    fig_inefficiency = px.line(x=inefficiency_series.index, y=inefficiency_series,
-                               title=f'{SYMBOL} Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling)',
-                               labels={'y': 'Inefficiency Index', 'x': 'Date'})
-    fig_inefficiency.update_layout(hovermode="x unified", template="plotly_dark")
+    if inefficiency_series.empty:
+        # Create an empty figure if no data
+        fig_inefficiency = go.Figure()
+        fig_inefficiency.update_layout(
+            title=f'{SYMBOL} Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling) - No Data',
+            template="plotly_dark",
+            xaxis_title="Date",
+            yaxis_title="Inefficiency Index",
+            annotations=[dict(
+                text="No inefficiency index data available (check window size or data)",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, showarrow=False
+            )]
+        )
+    else:
+        fig_inefficiency = px.line(x=inefficiency_series.index, y=inefficiency_series,
+                                   title=f'{SYMBOL} Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling)',
+                                   labels={'y': 'Inefficiency Index', 'x': 'Date'})
+        fig_inefficiency.update_layout(hovermode="x unified", template="plotly_dark")
+        
+        # Add better y-axis range for visualization
+        if inefficiency_series.max() > 10:
+            fig_inefficiency.update_yaxes(range=[0, min(100, inefficiency_series.max() * 1.1)])
     
     # Convert to JSON for template
     graphJSON_price = pio.to_json(fig_price)
