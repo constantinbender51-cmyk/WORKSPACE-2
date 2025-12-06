@@ -164,7 +164,6 @@ def calculate_inefficiency_index(df, window_days):
     return inverse_inefficiency_index_clean, inverse_inefficiency_index_smoothed
 
 # Web server routes
-@app.route('/')
 def get_processed_data(rolling_window_days):
     df = fetch_ohlcv(SYMBOL, START_DATE_STR)
     
