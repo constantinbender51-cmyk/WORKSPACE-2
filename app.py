@@ -313,8 +313,12 @@ def index():
     market_cum = np.exp(np.cumsum(benchmark_ret))
     strat_cum = np.exp(np.pad(leveraged_curve, (0,0))) 
     
+    # Calculate 365-day SMA
+    sma_365 = df['close'].rolling(window=365).mean()
+    
     ax1.plot(dates, market_cum, label="Buy & Hold", color='gray', alpha=0.5)
     ax1.plot(dates, strat_cum, label=f"3x Strategy (TP: {best_r:.1%})", color='darkorange')
+    ax1.plot(dates, sma_365, label="365-day SMA", color='blue', alpha=0.7, linestyle='--')
     ax1.set_title(f"Equity Curve: Dual SMA + Band + TP/SL (Log Scale)")
     ax1.set_yscale('log')
     ax1.legend()
