@@ -3,9 +3,11 @@ import pandas as pd
 import numpy as np
 import datetime as dt
 from flask import Flask, render_template
-import plotly.express as px
-import plotly.graph_objects as go
-import plotly.io as pio
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import io
+import base64
 import time
 
 # Configuration
@@ -175,77 +177,60 @@ def index():
         print(f"First 5 values: {inefficiency_series.head().tolist()}")
         print(f"Last 5 values: {inefficiency_series.tail().tolist()}")
     
-    # Create price chart
-    # Convert datetime index to string for proper JSON serialization
-    date_strings = df.index.strftime('%Y-%m-%d').tolist()
-    close_prices = df['close'].tolist()  # Convert Series to list for proper JSON serialization
+    # Create price chart with Matplotlib
+    plt.figure(figsize=(12, 6))
+    plt.plot(df.index, df['close'], color='blue', linewidth=1.5)
+    plt.title(f'{SYMBOL} Price (Daily Close)', fontsize=16, fontweight='bold')
+    plt.xlabel('Date', fontsize=12)
+    plt.ylabel('Price (USDT)', fontsize=12)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
     
-    # Debug: Check data being passed to chart
-    print(f"Price chart data - Dates count: {len(date_strings)}, Prices count: {len(close_prices)}")
-    if len(date_strings) > 0 and len(close_prices) > 0:
-        print(f"  First date: {date_strings[0]}, First price: {close_prices[0]:.2f}")
-        print(f"  Last date: {date_strings[-1]}, Last price: {close_prices[-1]:.2f}")
-    
-    fig_price = px.line(x=date_strings, y=close_prices, 
-                        title=f'{SYMBOL} Price (Daily Close)',
-                        labels={'y': 'Price (USDT)', 'x': 'Date'})
-    fig_price.update_layout(
-        hovermode="x unified", 
-        template="plotly_dark",
-        xaxis_title="Date",
-        yaxis_title="Price (USDT)",
-        height=500
-    )
+    # Save plot to base64 string
+    img_price = io.BytesIO()
+    plt.savefig(img_price, format='png', dpi=100)
+    plt.close()
+    img_price.seek(0)
+    price_chart_url = base64.b64encode(img_price.getvalue()).decode('utf8')
     
     # Create inefficiency index chart
     if inefficiency_series.empty:
         # Create an empty figure if no data
-        fig_inefficiency = go.Figure()
-        fig_inefficiency.update_layout(
-            title=f'{SYMBOL} Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling) - No Data',
-            template="plotly_dark",
-            xaxis_title="Date",
-            yaxis_title="Inefficiency Index",
-            height=500,
-            annotations=[dict(
-                text="No inefficiency index data available (check window size or data)",
-                xref="paper", yref="paper",
-                x=0.5, y=0.5, showarrow=False
-            )]
-        )
+        plt.figure(figsize=(12, 6))
+        plt.text(0.5, 0.5, 'No inefficiency index data available\n(check window size or data)', 
+                 horizontalalignment='center', verticalalignment='center',
+                 transform=plt.gca().transAxes, fontsize=14)
+        plt.title(f'{SYMBOL} Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling) - No Data', 
+                  fontsize=16, fontweight='bold')
+        plt.xlabel('Date', fontsize=12)
+        plt.ylabel('Inefficiency Index', fontsize=12)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
     else:
-        # Convert datetime index to string for proper JSON serialization
-        inefficiency_dates = inefficiency_series.index.strftime('%Y-%m-%d').tolist()
-        inefficiency_values = inefficiency_series.tolist()  # Convert Series to list for proper JSON serialization
+        plt.figure(figsize=(12, 6))
+        plt.plot(inefficiency_series.index, inefficiency_series.values, color='red', linewidth=1.5)
+        plt.title(f'{SYMBOL} Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling)', 
+                  fontsize=16, fontweight='bold')
+        plt.xlabel('Date', fontsize=12)
+        plt.ylabel('Inefficiency Index', fontsize=12)
+        plt.grid(True, alpha=0.3)
         
-        # Debug: Check inefficiency data being passed to chart
-        print(f"Inefficiency chart data - Dates count: {len(inefficiency_dates)}, Values count: {len(inefficiency_values)}")
-        if len(inefficiency_dates) > 0 and len(inefficiency_values) > 0:
-            print(f"  First date: {inefficiency_dates[0]}, First value: {inefficiency_values[0]:.2f}")
-            print(f"  Last date: {inefficiency_dates[-1]}, Last value: {inefficiency_values[-1]:.2f}")
-        
-        fig_inefficiency = px.line(x=inefficiency_dates, y=inefficiency_values,
-                                   title=f'{SYMBOL} Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling)',
-                                   labels={'y': 'Inefficiency Index', 'x': 'Date'})
-        fig_inefficiency.update_layout(
-            hovermode="x unified", 
-            template="plotly_dark",
-            xaxis_title="Date",
-            yaxis_title="Inefficiency Index",
-            height=500
-        )
-        
-        # Add better y-axis range for visualization
+        # Set y-axis range if needed
         if inefficiency_series.max() > 10:
-            fig_inefficiency.update_yaxes(range=[0, min(100, inefficiency_series.max() * 1.1)])
+            plt.ylim(0, min(100, inefficiency_series.max() * 1.1))
+        
+        plt.tight_layout()
     
-    # Convert to JSON for template
-    graphJSON_price = pio.to_json(fig_price)
-    graphJSON_inefficiency = pio.to_json(fig_inefficiency)
+    # Save plot to base64 string
+    img_inefficiency = io.BytesIO()
+    plt.savefig(img_inefficiency, format='png', dpi=100)
+    plt.close()
+    img_inefficiency.seek(0)
+    inefficiency_chart_url = base64.b64encode(img_inefficiency.getvalue()).decode('utf8')
     
     return render_template('index.html',
-                           graphJSON_price=graphJSON_price,
-                           graphJSON_inefficiency=graphJSON_inefficiency,
+                           price_chart_url=price_chart_url,
+                           inefficiency_chart_url=inefficiency_chart_url,
                            symbol=SYMBOL,
                            window=ROLLING_WINDOW_DAYS)
 
