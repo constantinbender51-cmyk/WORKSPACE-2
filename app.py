@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from flask import Flask, send_file
 import os
+import itertools
 
 # 1. CONFIGURATION
 symbol = 'BTC/USDT'
@@ -18,13 +19,16 @@ SL_PCT = 0.02
 TP_PCT = 0.16
 III_WINDOW = 14 
 
-# THE "SNIPER" CONFIGURATION (0/0/3)
-THRESH_LOW = 0.05
-THRESH_HIGH = 0.10
+# --- GRID SEARCH SPACE DEFINITION (5 VARIABLES) ---
 
-LEV_LOW = 0.0   # Cash
-LEV_MID = 0.0   # Cash
-LEV_HIGH = 3.0  # Attack
+# Threshold Search Space (T_Low, T_High): 0.0 to 0.9 in 0.1 steps (10 values)
+THRESH_RANGE = np.arange(0.0, 1.0, 0.1) 
+
+# Leverage Search Space (L_Low, L_Mid, L_High): 0.0 to 4.5 in 0.5 steps (10 values)
+LEV_RANGE = np.arange(0.0, 4.51, 0.5) 
+
+# MDD Constraint
+MAX_MDD_CONSTRAINT = -0.50 # Must be less than 50% drawdown
 
 def fetch_binance_history(symbol, start_str):
     print(f"Fetching data for {symbol} starting from {start_str}...")
@@ -47,7 +51,7 @@ def fetch_binance_history(symbol, start_str):
     df = df[~df.index.duplicated(keep='first')]
     return df
 
-# 2. DATA PREP
+# 2. DATA PREP & BASE RETURNS
 df = fetch_binance_history(symbol, start_date_str)
 
 # Calculate III
@@ -61,114 +65,190 @@ df['iii'] = df['net_direction'] / (df['path_length'] + epsilon)
 df['sma_fast'] = df['close'].rolling(SMA_FAST).mean()
 df['sma_slow'] = df['close'].rolling(SMA_SLOW).mean()
 
-# 3. BACKTEST (0/0/3)
-df['strategy_equity'] = 1.0
-df['buy_hold_equity'] = 1.0
-df['leverage_used'] = 0.0
-equity = 1.0
-hold_equity = 1.0
+# Pre-calculate 1x Strategy Returns
+print("Pre-calculating base strategy returns...")
+base_returns = []
 start_idx = max(SMA_SLOW, III_WINDOW)
-is_busted = False
 
-for i in range(start_idx, len(df)):
-    today = df.index[i]
+for i in range(len(df)):
+    if i < start_idx:
+        base_returns.append(0.0)
+        continue
+    
     prev_close = df['close'].iloc[i-1]
     prev_fast = df['sma_fast'].iloc[i-1]
     prev_slow = df['sma_slow'].iloc[i-1]
-    
-    # 0/0/3 Logic
-    prev_iii = df['iii'].iloc[i-1]
-    
-    if prev_iii < THRESH_LOW:
-        leverage = LEV_LOW
-    elif prev_iii < THRESH_HIGH:
-        leverage = LEV_MID
-    else:
-        leverage = LEV_HIGH
-        
-    df.at[today, 'leverage_used'] = leverage
     
     open_p = df['open'].iloc[i]
     high_p = df['high'].iloc[i]
     low_p = df['low'].iloc[i]
     close_p = df['close'].iloc[i]
     
-    base_ret = 0.0
+    daily_ret = 0.0
     
     # Trend Logic
     if prev_close > prev_fast and prev_close > prev_slow:
         entry = open_p
         sl = entry * (1 - SL_PCT)
         tp = entry * (1 + TP_PCT)
-        if low_p <= sl: base_ret = -SL_PCT
-        elif high_p >= tp: base_ret = TP_PCT
-        else: base_ret = (close_p - entry) / entry
+        if low_p <= sl: daily_ret = -SL_PCT
+        elif high_p >= tp: daily_ret = TP_PCT
+        else: daily_ret = (close_p - entry) / entry
         
     elif prev_close < prev_fast and prev_close < prev_slow:
         entry = open_p
         sl = entry * (1 + SL_PCT)
         tp = entry * (1 - TP_PCT)
-        if high_p >= sl: base_ret = -SL_PCT
-        elif low_p <= tp: base_ret = TP_PCT
-        else: base_ret = (entry - close_p) / entry
+        if high_p >= sl: daily_ret = -SL_PCT
+        elif low_p <= tp: daily_ret = TP_PCT
+        else: daily_ret = (entry - close_p) / entry
+        
+    base_returns.append(daily_ret)
+
+df['base_ret'] = base_returns
+
+# 3. LEVERAGE GRID SEARCH (Vectorized for Speed)
+total_iterations = len(THRESH_RANGE) * len(THRESH_RANGE) * len(LEV_RANGE)**3
+print(f"Starting Exhaustive 5-Variable Grid Search ({total_iterations} total combinations)...")
+
+base_ret_arr = np.array(base_returns)
+iii_prev = df['iii'].shift(1).fillna(0).values
+
+best_sharpe = -999
+best_combo = (0.0, 0.0, 0.0, 0.0, 0.0) # T_Low, T_High, L_Low, L_Mid, L_High
+best_mdd = 0
+
+# Metrics function optimized for arrays
+def calculate_sharpe_mdd(returns):
+    cum_ret = np.cumprod(1 + returns)
+    if cum_ret.size == 0 or cum_ret.iloc[0] == 0: return 0, 0
+    
+    # Sharpe
+    mean_ret = np.mean(returns)
+    std_ret = np.std(returns)
+    sharpe = (mean_ret / std_ret) * np.sqrt(365) if std_ret > 0 else 0
+    
+    # MDD
+    roll_max = np.maximum.accumulate(cum_ret)
+    drawdown = (cum_ret - roll_max) / roll_max
+    max_dd = drawdown.min()
+    
+    return sharpe, max_dd
+
+# Outer loop: Thresholds (T_Low, T_High)
+for t_low, t_high in itertools.product(THRESH_RANGE, repeat=2):
+    # Enforce logical constraint
+    if t_low >= t_high: continue 
+    
+    # Create Tier Mask for this specific threshold combo
+    # 0 = Low Tier (III < T_Low)
+    # 1 = Mid Tier (T_Low <= III < T_High)
+    # 2 = High Tier (III >= T_High)
+    
+    # Vectorized mask creation
+    tier_mask = np.full(len(df), 2, dtype=int) # Default High
+    tier_mask[iii_prev < t_high] = 1 # Mid
+    tier_mask[iii_prev < t_low] = 0  # Low
+
+    # Inner loop: Leverages (L_Low, L_Mid, L_High)
+    for l_low, l_mid, l_high in itertools.product(LEV_RANGE, repeat=3):
+        
+        # Construct leverage array using the calculated tiers
+        lookup = np.array([l_low, l_mid, l_high])
+        lev_arr = lookup[tier_mask]
+        
+        final_rets = base_ret_arr * lev_arr
+        
+        # Calculate Sharpe and MDD (Only analyze period where strategy is active)
+        sharpe, mdd = calculate_sharpe_mdd(pd.Series(final_rets[start_idx:]))
+        
+        # Check against MDD constraint
+        if mdd > MAX_MDD_CONSTRAINT: 
+            if sharpe > best_sharpe:
+                best_sharpe = sharpe
+                best_combo = (round(t_low, 2), round(t_high, 2), round(l_low, 2), round(l_mid, 2), round(l_high, 2))
+                best_mdd = mdd
+
+
+# 4. FINAL BACKTEST WITH BEST PARAMS
+OPT_T_LOW, OPT_T_HIGH, OPT_L_LOW, OPT_L_MID, OPT_L_HIGH = best_combo
+
+# Recalculate tier mask for the final run
+iii_prev = df['iii'].shift(1).fillna(0).values
+tier_mask_final = np.full(len(df), 2, dtype=int) 
+tier_mask_final[iii_prev < OPT_T_HIGH] = 1
+tier_mask_final[iii_prev < OPT_T_LOW] = 0
+
+# Final optimized leverage array
+lookup_final = np.array([OPT_L_LOW, OPT_L_MID, OPT_L_HIGH])
+lev_arr_final = lookup_final[tier_mask_final]
+final_rets_final = base_ret_arr * lev_arr_final
+
+# Backtest simulation for plot data
+df['strategy_equity'] = 1.0
+df['leverage_used'] = 0.0
+equity = 1.0
+is_busted = False
+
+for i in range(start_idx, len(df)):
+    daily_ret = final_rets_final[i]
+    leverage = lev_arr_final[i]
     
     if not is_busted:
-        daily_ret = base_ret * leverage
         equity *= (1 + daily_ret)
         if equity <= 0.05:
             equity = 0
             is_busted = True
             
-    bh_ret = (close_p - df['close'].iloc[i-1]) / df['close'].iloc[i-1]
-    hold_equity *= (1 + bh_ret)
-    
-    df.at[today, 'strategy_equity'] = equity
-    df.at[today, 'buy_hold_equity'] = hold_equity
+    df.at[df.index[i], 'strategy_equity'] = equity
+    df.at[df.index[i], 'leverage_used'] = leverage
 
-# 4. METRICS & PLOT
-def get_metrics(equity_series):
-    ret = equity_series.pct_change().fillna(0)
-    total_ret = (equity_series.iloc[-1] / equity_series.iloc[0]) - 1
-    days = (equity_series.index[-1] - equity_series.index[0]).days
-    cagr = (equity_series.iloc[-1] / equity_series.iloc[0]) ** (365.0 / days) - 1
-    roll_max = equity_series.cummax()
-    drawdown = (equity_series - roll_max) / roll_max
-    max_dd = drawdown.min()
-    sharpe = (ret.mean() / ret.std()) * np.sqrt(365) if ret.std() != 0 else 0
-    return total_ret, cagr, max_dd, sharpe
+# 5. METRICS & PLOT
+plot_data = df.iloc[start_idx:].copy()
+s_tot, s_cagr, s_mdd, s_sharpe = get_final_metrics(plot_data['strategy_equity'])
 
-s_tot, s_cagr, s_mdd, s_sharpe = get_metrics(df['strategy_equity'])
-
-print(f"SNIPER RESULTS (0/0/3)")
-print(f"Sharpe Ratio: {s_sharpe:.2f}")
-print(f"Total Return: {s_tot:.2f}x")
-print(f"Max Drawdown: {s_mdd*100:.2f}%")
+print("\n" + "="*45)
+print(f"BEST 5-VARIABLE OPTIMIZATION (Constrained MDD < {MAX_MDD_CONSTRAINT*100:.0f}%)")
+print(f"Optimal Thresholds: {OPT_T_LOW:.2f} (Low) / {OPT_T_HIGH:.2f} (High)")
+print(f"Optimal Leverages: {OPT_L_LOW:.1f}x / {OPT_L_MID:.1f}x / {OPT_L_HIGH:.1f}x")
+print("-" * 45)
+print(f"{'Sharpe Ratio':<15} | {s_sharpe:>10.2f}")
+print(f"{'Max Drawdown':<15} | {s_mdd*100:>10.1f}%")
+print(f"{'CAGR':<15} | {s_cagr*100:>10.1f}%")
+print("="*45 + "\n")
 
 plt.figure(figsize=(12, 10))
 
-ax1 = plt.subplot(2, 1, 1)
-plot_data = df.iloc[start_idx:]
-ax1.plot(plot_data.index, plot_data['strategy_equity'], label=f'Sniper Strategy (Sharpe: {s_sharpe:.2f})', color='blue')
+ax1 = plt.subplot(3, 1, 1)
+ax1.plot(plot_data.index, plot_data['strategy_equity'], label=f'Best Strategy (Sharpe: {s_sharpe:.2f})', color='blue')
 ax1.plot(plot_data.index, plot_data['buy_hold_equity'], label='Buy & Hold', color='gray', alpha=0.5)
 ax1.set_yscale('log')
-ax1.set_title(f'Strategy Equity (Leverage: {LEV_LOW} / {LEV_MID} / {LEV_HIGH})')
+ax1.set_title(f'Final Optimized Strategy (T: {OPT_T_LOW}/{OPT_T_HIGH} | L: {OPT_L_LOW}x/{OPT_L_MID}x/{OPT_L_HIGH}x)')
 ax1.legend()
-ax1.grid(True, alpha=0.3)
+ax1.grid(True, which='both', linestyle='--', alpha=0.3)
 
 # Add Stats Box
-stats = f"CAGR: {s_cagr*100:.1f}%\nMaxDD: {s_mdd*100:.1f}%\nTotal: {s_tot:.2f}x"
+stats = f"CAGR: {s_cagr*100:.1f}%\nMaxDD: {s_mdd*100:.1f}%\nSharpe: {s_sharpe:.2f}"
 ax1.text(0.02, 0.85, stats, transform=ax1.transAxes, bbox=dict(facecolor='white', alpha=0.8))
 
-ax2 = plt.subplot(2, 1, 2, sharex=ax1)
-# Create a colored fill for leverage
-# We'll use step plot
-ax2.step(plot_data.index, plot_data['leverage_used'], where='post', color='black', linewidth=1)
-ax2.fill_between(plot_data.index, 0, plot_data['leverage_used'], step='post', color='purple', alpha=0.3)
-
-ax2.set_yticks([0, 3])
-ax2.set_yticklabels(['0x (Cash)', '3x (Attack)'])
-ax2.set_title('Leverage Deployment (The "Sniper" approach)')
+ax2 = plt.subplot(3, 1, 2, sharex=ax1)
+ax2.step(plot_data.index, plot_data['leverage_used'], where='post', color='purple', linewidth=1)
+ax2.fill_between(plot_data.index, 0, plot_data['leverage_used'], step='post', color='purple', alpha=0.2)
+ax2.set_title('Leverage Deployed')
+ax2.set_yticks(np.unique(plot_data['leverage_used']))
+ax2.set_ylabel('Leverage (x)')
 ax2.grid(True, axis='x', alpha=0.3)
+
+ax3 = plt.subplot(3, 1, 3, sharex=ax1)
+# Drawdown
+roll_max = plot_data['strategy_equity'].cummax()
+dd = (plot_data['strategy_equity'] - roll_max) / roll_max
+ax3.plot(plot_data.index, dd, color='red')
+ax3.fill_between(plot_data.index, dd, 0, color='red', alpha=0.1)
+ax3.axhline(MAX_MDD_CONSTRAINT, color='black', linestyle='--')
+ax3.set_title('Drawdown Profile (Constrained < 50%)')
+ax3.set_ylabel('Drawdown')
+ax3.grid(True, alpha=0.3)
 
 plt.tight_layout()
 plot_dir = '/app/static'
