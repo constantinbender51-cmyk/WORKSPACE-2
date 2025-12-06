@@ -200,18 +200,15 @@ def index():
     ax1.tick_params(axis='y', labelcolor='blue')
     ax1.grid(True, alpha=0.3)
     
-    # Plot inverse inefficiency index on secondary y-axis (right) if data exists
-    if not inefficiency_series.empty:
+    # Plot smoothed inverse inefficiency index (14-day SMA) on secondary y-axis (right) if data exists
+    if not inefficiency_smoothed.empty:
         ax2 = ax1.twinx()
-        ax2.plot(inefficiency_series.index, inefficiency_series.values, color='red', linewidth=1.5, alpha=0.5, label='Inverse Inefficiency Index')
-        # Plot smoothed inverse inefficiency index (14-day SMA)
-        if not inefficiency_smoothed.empty:
-            ax2.plot(inefficiency_smoothed.index, inefficiency_smoothed.values, color='darkred', linewidth=2, label='Smoothed (14-day SMA)')
-        ax2.set_ylabel('Inverse Inefficiency Index (1/x)', fontsize=12, color='red')
-        ax2.tick_params(axis='y', labelcolor='red')
+        ax2.plot(inefficiency_smoothed.index, inefficiency_smoothed.values, color='darkred', linewidth=2, label='Inverse Inefficiency Index (14-day SMA)')
+        ax2.set_ylabel('Inverse Inefficiency Index (1/x)', fontsize=12, color='darkred')
+        ax2.tick_params(axis='y', labelcolor='darkred')
         # Set y-axis range for inverse inefficiency index if needed
-        if inefficiency_series.max() > 10:
-            ax2.set_ylim(0, min(100, inefficiency_series.max() * 1.1))
+        if inefficiency_smoothed.max() > 10:
+            ax2.set_ylim(0, min(100, inefficiency_smoothed.max() * 1.1))
         # Add legend for both axes
         lines1, labels1 = ax1.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
@@ -220,7 +217,7 @@ def index():
         # Add legend for price only if no inefficiency data
         ax1.legend(loc='upper left')
     
-    plt.title(f'{SYMBOL} Price with Inverse Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling, 14-day SMA)', fontsize=16, fontweight='bold')
+    plt.title(f'{SYMBOL} Price with Inverse Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling, 14-day SMA Only)', fontsize=16, fontweight='bold')
     plt.tight_layout()
     
     # Save plot to base64 string
