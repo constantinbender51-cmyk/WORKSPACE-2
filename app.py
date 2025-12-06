@@ -410,8 +410,8 @@ def grid_search():
                            symbol=SYMBOL)
 
 
-    @app.route('/best_iii_equity')
-def plot_best_iii_equity():
+    @app.route('/bestiii')
+def plot_bestiii_equity():
     # Fetch OHLCV data once
     print(f"Fetching OHLCV data for plotting best III equity...")
     base_df = fetch_ohlcv(SYMBOL, START_DATE_STR)
