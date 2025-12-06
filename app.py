@@ -217,57 +217,12 @@ def get_processed_data(df_ohlcv, rolling_window_days):
 
 @app.route('/')
 def index():
-    df, inefficiency_series, inefficiency_smoothed, iii_sma_x_returns, temp_df = get_processed_data(ROLLING_WINDOW_DAYS)
+    # Fetch OHLCV data once for the index page
+    print("Fetching OHLCV data for index page...")
+    df_ohlcv = fetch_ohlcv(SYMBOL, START_DATE_STR)
     
-    if df is None or df.empty:
-        print("DataFrame is None or empty. Using sample data.")
-        df = generate_sample_data()
-
-    # Calculate simple returns for the entire DataFrame
-    df['returns'] = df['close'].pct_change()
-    
-    # Calculate 120-day SMA of close price for conditional logic
-    df['close_sma_120'] = df['close'].rolling(window=120, min_periods=1).mean()
-    
-    # Debug: Print data info
-    print(f"DataFrame info:")
-    print(f"  Shape: {df.shape}")
-    print(f"  Index range: {df.index[0]} to {df.index[-1]}")
-    print(f"  Close price range: {df['close'].min():.2f} to {df['close'].max():.2f}")
-    
-    inefficiency_series, inefficiency_smoothed = calculate_inefficiency_index(df, ROLLING_WINDOW_DAYS)    
-    
-    # Calculate the new metric: yesterday's smoothed inefficiency * today's log return
-    # Create a temporary DataFrame to align series by index
-    temp_df = pd.DataFrame(index=df.index)
-    temp_df['returns'] = df['returns']
-    temp_df['iii_sma'] = inefficiency_smoothed # This aligns by index, filling with NaNs where no match
-
-    temp_df['iii_sma_yesterday'] = temp_df['iii_sma'].shift(1)
-    
-    # Add yesterday's close price and its 120-day SMA to temp_df for alignment
-    temp_df['close_yesterday'] = df['close'].shift(1)
-    temp_df['close_sma_120_yesterday'] = df['close_sma_120'].shift(1)
-    
-    # Determine the multiplier for returns based on the condition:
-    # If yesterday's close price is above yesterday's 120-day SMA, use original return (multiplier = 1)
-    # Else (price below or equal to SMA), use negative return (multiplier = -1)
-    return_multiplier = np.where(
-        temp_df['close_yesterday'] > temp_df['close_sma_120_yesterday'],
-        1,
-        -1
-    )
-    
-    # Apply the multiplier to today's simple return
-    modified_returns = temp_df['returns'] * return_multiplier
-    
-    # Calculate the daily factor for compounding using the modified returns
-    daily_compounding_factor = 1 + (modified_returns * temp_df['iii_sma_yesterday'])
-    
-    # Compute the cumulative product for compounding
-    cumulative_compounded_series = daily_compounding_factor.cumprod()
-    
-    iii_sma_x_returns = cumulative_compounded_series.dropna()
+    # Pass the pre-fetched DataFrame and rolling_window_days to get_processed_data
+    df, inefficiency_series, inefficiency_smoothed, iii_sma_x_returns, temp_df = get_processed_data(df_ohlcv, ROLLING_WINDOW_DAYS)
 
     # Debug: Print some statistics about the inefficiency index
     print(f"Data length: {len(df)}")
