@@ -143,15 +143,21 @@ def calculate_inefficiency_index(df, window_days):
     denominator_mask = np.abs(rolling_sum_log_returns) < 1e-9
     inefficiency_index[denominator_mask] = np.nan
     
+    # Compute inverse inefficiency index (1/x)
+    inverse_inefficiency_index = 1 / inefficiency_index
+    
+    # Handle division by zero or near-zero values in the original index
+    inverse_inefficiency_index = inverse_inefficiency_index.replace([np.inf, -np.inf], np.nan)
+    
     # Clean the data for plotting
     # Remove NaN values and cap extreme values for better visualization
-    inefficiency_index_clean = inefficiency_index.dropna()
+    inverse_inefficiency_index_clean = inverse_inefficiency_index.dropna()
     
-    # Cap extreme values at 100 for visualization (still shows high inefficiency)
-    if not inefficiency_index_clean.empty:
-        inefficiency_index_clean = inefficiency_index_clean.clip(upper=100)
+    # Cap extreme values at 100 for visualization
+    if not inverse_inefficiency_index_clean.empty:
+        inverse_inefficiency_index_clean = inverse_inefficiency_index_clean.clip(upper=100)
     
-    return inefficiency_index_clean
+    return inverse_inefficiency_index_clean
 
 # Web server routes
 @app.route('/')
@@ -209,10 +215,10 @@ def index():
     else:
         plt.figure(figsize=(12, 6))
         plt.plot(inefficiency_series.index, inefficiency_series.values, color='red', linewidth=1.5)
-        plt.title(f'{SYMBOL} Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling)', 
+        plt.title(f'{SYMBOL} Inverse Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling)', 
                   fontsize=16, fontweight='bold')
         plt.xlabel('Date', fontsize=12)
-        plt.ylabel('Inefficiency Index', fontsize=12)
+        plt.ylabel('Inverse Inefficiency Index (1/x)', fontsize=12)
         plt.grid(True, alpha=0.3)
         
         # Set y-axis range if needed
