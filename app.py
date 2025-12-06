@@ -122,7 +122,7 @@ def fetch_ohlcv(symbol, since_date_str):
 # Calculate inefficiency index
 def calculate_inefficiency_index(df, window_days):
     if df is None or len(df) < window_days:
-        return pd.Series([], dtype=float)
+        return pd.Series([], dtype=float), pd.Series([], dtype=float)
     
     # Calculate log returns
     log_returns = np.log(df['close'] / df['close'].shift(1))
@@ -157,7 +157,11 @@ def calculate_inefficiency_index(df, window_days):
     if not inverse_inefficiency_index_clean.empty:
         inverse_inefficiency_index_clean = inverse_inefficiency_index_clean.clip(upper=100)
     
-    return inverse_inefficiency_index_clean
+    # Compute 14-day SMA for smoothing the inverse inefficiency index
+    sma_window = 14
+    inverse_inefficiency_index_smoothed = inverse_inefficiency_index_clean.rolling(window=sma_window, min_periods=1).mean()
+    
+    return inverse_inefficiency_index_clean, inverse_inefficiency_index_smoothed
 
 # Web server routes
 @app.route('/')
@@ -174,7 +178,7 @@ def index():
     print(f"  Index range: {df.index[0]} to {df.index[-1]}")
     print(f"  Close price range: {df['close'].min():.2f} to {df['close'].max():.2f}")
     
-    inefficiency_series = calculate_inefficiency_index(df, ROLLING_WINDOW_DAYS)    
+    inefficiency_series, inefficiency_smoothed = calculate_inefficiency_index(df, ROLLING_WINDOW_DAYS)    
     # Debug: Print some statistics about the inefficiency index
     print(f"Data length: {len(df)}")
     print(f"Inefficiency series length: {len(inefficiency_series)}")
@@ -182,6 +186,8 @@ def index():
         print(f"Inefficiency index stats - min: {inefficiency_series.min():.2f}, max: {inefficiency_series.max():.2f}, mean: {inefficiency_series.mean():.2f}")
         print(f"First 5 values: {inefficiency_series.head().tolist()}")
         print(f"Last 5 values: {inefficiency_series.tail().tolist()}")
+    if not inefficiency_smoothed.empty:
+        print(f"Smoothed inefficiency index stats - min: {inefficiency_smoothed.min():.2f}, max: {inefficiency_smoothed.max():.2f}, mean: {inefficiency_smoothed.mean():.2f}")
     
     # Create combined price and inverse inefficiency index chart with second y-axis
     plt.figure(figsize=(12, 6))
@@ -197,7 +203,10 @@ def index():
     # Plot inverse inefficiency index on secondary y-axis (right) if data exists
     if not inefficiency_series.empty:
         ax2 = ax1.twinx()
-        ax2.plot(inefficiency_series.index, inefficiency_series.values, color='red', linewidth=1.5, label='Inverse Inefficiency Index')
+        ax2.plot(inefficiency_series.index, inefficiency_series.values, color='red', linewidth=1.5, alpha=0.5, label='Inverse Inefficiency Index')
+        # Plot smoothed inverse inefficiency index (14-day SMA)
+        if not inefficiency_smoothed.empty:
+            ax2.plot(inefficiency_smoothed.index, inefficiency_smoothed.values, color='darkred', linewidth=2, label='Smoothed (14-day SMA)')
         ax2.set_ylabel('Inverse Inefficiency Index (1/x)', fontsize=12, color='red')
         ax2.tick_params(axis='y', labelcolor='red')
         # Set y-axis range for inverse inefficiency index if needed
@@ -211,7 +220,7 @@ def index():
         # Add legend for price only if no inefficiency data
         ax1.legend(loc='upper left')
     
-    plt.title(f'{SYMBOL} Price with Inverse Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling)', fontsize=16, fontweight='bold')
+    plt.title(f'{SYMBOL} Price with Inverse Inefficiency Index ({ROLLING_WINDOW_DAYS}-day Rolling, 14-day SMA)', fontsize=16, fontweight='bold')
     plt.tight_layout()
     
     # Save plot to base64 string
