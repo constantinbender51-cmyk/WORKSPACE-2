@@ -163,6 +163,18 @@ def calculate_inefficiency_index(df, window_days):
     
     return inverse_inefficiency_index_clean, inverse_inefficiency_index_smoothed
 
+# Calculate Sharpe Ratio
+def calculate_sharpe_ratio(daily_returns, annualization_factor=252):
+    if daily_returns.empty or daily_returns.std() == 0 or daily_returns.isnull().all():
+        return 0.0  # Return 0.0 for no variance or no data
+
+    mean_daily_return = daily_returns.mean()
+    std_daily_return = daily_returns.std()
+    
+    # Assuming risk-free rate is 0 for simplicity and comparative analysis
+    sharpe = (mean_daily_return / std_daily_return) * np.sqrt(annualization_factor)
+    return sharpe
+
 # Web server routes
 def get_processed_data(df_ohlcv, rolling_window_days):
     # Use the pre-fetched DataFrame instead of fetching again
@@ -205,14 +217,19 @@ def get_processed_data(df_ohlcv, rolling_window_days):
     modified_returns = temp_df['returns'] * return_multiplier
     
     # Calculate the daily factor for compounding using the modified returns
-    daily_compounding_factor = 1 + (modified_returns * temp_df['iii_sma_yesterday'])
+    daily_strategy_returns_series = modified_returns * temp_df['iii_sma_yesterday']
+    daily_compounding_factor = 1 + daily_strategy_returns_series
     
     # Compute the cumulative product for compounding
     cumulative_compounded_series = daily_compounding_factor.cumprod()
     
     iii_sma_x_returns = cumulative_compounded_series.dropna()
     
-    return df, inefficiency_series, inefficiency_smoothed, iii_sma_x_returns, temp_df
+    # Also return the daily returns for Sharpe ratio calculation
+    # Drop NaNs from daily_strategy_returns_series before returning for cleaner Sharpe calculation
+    daily_strategy_returns_series_clean = daily_strategy_returns_series.dropna()
+    
+    return df, inefficiency_series, inefficiency_smoothed, iii_sma_x_returns, daily_strategy_returns_series_clean, temp_df
 
 
 @app.route('/')
@@ -222,7 +239,7 @@ def index():
     df_ohlcv = fetch_ohlcv(SYMBOL, START_DATE_STR)
     
     # Pass the pre-fetched DataFrame and rolling_window_days to get_processed_data
-    df, inefficiency_series, inefficiency_smoothed, iii_sma_x_returns, temp_df = get_processed_data(df_ohlcv, ROLLING_WINDOW_DAYS)
+    df, inefficiency_series, inefficiency_smoothed, iii_sma_x_returns, _, temp_df = get_processed_data(df_ohlcv, ROLLING_WINDOW_DAYS)
 
     # Debug: Print some statistics about the inefficiency index
     print(f"Data length: {len(df)}")
@@ -348,11 +365,11 @@ def grid_search():
     for period in iii_periods:
         print(f"Performing grid search for iii_period: {period}")
         # Pass the pre-fetched base_df to get_processed_data
-        _, _, _, iii_sma_x_returns, _ = get_processed_data(base_df, period)
+        _, _, _, _, daily_strategy_returns, _ = get_processed_data(base_df, period)
         
-        if not iii_sma_x_returns.empty:
-            final_equity = iii_sma_x_returns.iloc[-1]
-            optimal_periods[period] = final_equity
+        if not daily_strategy_returns.empty:
+            sharpe_ratio = calculate_sharpe_ratio(daily_strategy_returns)
+            optimal_periods[period] = sharpe_ratio
         else:
             optimal_periods[period] = np.nan
             
@@ -363,24 +380,24 @@ def grid_search():
         return "<p>No valid data for grid search plot.</p>", 500
 
     periods = list(valid_periods.keys())
-    final_equities = list(valid_periods.values())
+    sharpe_ratios = list(valid_periods.values())
 
     # Create the grid search plot
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.bar(periods, final_equities, color='skyblue')
-    ax.set_title('Grid Search for Optimal III Period: Final Equity', fontsize=16, fontweight='bold')
+    ax.bar(periods, sharpe_ratios, color='skyblue')
+    ax.set_title('Grid Search for Optimal III Period: Sharpe Ratio', fontsize=16, fontweight='bold')
     ax.set_xlabel('III Period (Days)', fontsize=12)
-    ax.set_ylabel('Final Cumulative Compounded Value', fontsize=12)
+    ax.set_ylabel('Annualized Sharpe Ratio', fontsize=12)
     ax.grid(axis='y', alpha=0.3)
     
     # Highlight the best period
-    if final_equities:
-        best_period_idx = np.argmax(final_equities)
+    if sharpe_ratios:
+        best_period_idx = np.argmax(sharpe_ratios)
         best_period = periods[best_period_idx]
-        best_equity = final_equities[best_period_idx]
-        ax.bar(best_period, best_equity, color='orange', label=f'Best Period: {best_period} (Equity: {best_equity:.2f})')
+        best_sharpe = sharpe_ratios[best_period_idx]
+        ax.bar(best_period, best_sharpe, color='orange', label=f'Best Period: {best_period} (Sharpe: {best_sharpe:.2f})')
         ax.legend()
-        print(f"Best III Period found: {best_period} with final equity: {best_equity:.2f}")
+        print(f"Best III Period found: {best_period} with Sharpe Ratio: {best_sharpe:.2f}")
 
     img_grid_search = io.BytesIO()
     fig.savefig(img_grid_search, format='png', dpi=100)
