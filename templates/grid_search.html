@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ symbol }} III Period Grid Search</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .chart-container {
+            background-color: white;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .chart-title {
+            margin-top: 0;
+            color: #3498db;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        .info-box {
+            background-color: #e8f4fc;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .info-box h3 {
+            margin-top: 0;
+            color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ symbol }} III Period Grid Search Results</h1>
+        
+        <div class="info-box">
+            <h3>About this Grid Search</h3>
+            <p>This page displays the results of a grid search for the optimal "Inverse Inefficiency Index (III) Period" (rolling window days) ranging from 2 to 120. For each period, the final cumulative compounded value is calculated using the conditional strategy and plotted.</p>
+            <p>The optimal period is highlighted in orange.</p>
+        </div>
+            
+        <div class="chart-container">
+            <h2 class="chart-title">III Period Grid Search: Final Cumulative Compounded Value</h2>
+            {% if grid_search_chart_url %}
+                <img src="data:image/png;base64,{{ grid_search_chart_url }}" alt="Grid Search Chart" style="width:100%; max-width:1200px;">
+            {% else %}
+                <p>No grid search chart available.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
